@@ -160,17 +160,18 @@
   }
 
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let t = seed % 100, tStep = reduce ? 0 : Math.PI/100;
-  let driftV = reduce ? 0.006 : 0.045, gust = 0, last = performance.now();
+  // ゆっくり呼吸する速度に。定数は約1分周期で漂い、回転も約30秒で一周。
+  let t = seed % 100, tStep = reduce ? 0 : Math.PI/800;
+  let driftV = reduce ? 0.0004 : 0.0016, gust = 0, last = performance.now();
 
   function frame(now){
     const dt = Math.min((now - last)/1000, 0.05); last = now;
 
     if (!document.hidden){
-      phase += (driftV + gust) * dt * 60;
-      huePhase += (0.11 + gust*0.4) * dt;
-      gust *= Math.exp(-dt/0.85);
-      t += tStep * (1 + gust*3);
+      phase += driftV * (1 + gust*40) * dt * 60;
+      huePhase += (0.045 + gust*0.3) * dt;
+      gust *= Math.exp(-dt/1.2);
+      t += tStep * (1 + gust*8);
       if (t > 4000) t -= 4000;
 
       driftParams();
@@ -217,7 +218,7 @@
 
   // ── タップで一気に流す（滑らかに別の配置へ。無理数比なので二度と戻らない） ──
   const hint = document.getElementById('hint');
-  cv.addEventListener('pointerdown', () => { gust = 7; });
+  cv.addEventListener('pointerdown', () => { gust = 1; });
 
   // 起動時のヒント（数秒で消える）
   setTimeout(() => hint.classList.add('show'), 900);
