@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>つぶやき係数実験台 ── ネタを選んでいじる</title>
+<style>
+  :root{
+    --paper:#E7EAE4; --paper-2:#DDE1DA; --ink:#171C22; --ink-mute:#5C6670;
+    --rule:#C3CAC0; --signal:#FF2D6F; --trace:#00A6BC; --void:#070809;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Space Grotesk","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+    --body:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    background-image:linear-gradient(var(--paper-2) 1px,transparent 1px),linear-gradient(90deg,var(--paper-2) 1px,transparent 1px);
+    background-size:24px 24px;
+    color:var(--ink);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px;margin:0 auto;padding:20px 16px 56px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:16px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute)}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(21px,4.2vw,32px);line-height:1.2;margin:6px 0 6px}
+  h1 em{font-style:normal;color:var(--signal)}
+  .sub{font-size:13px;color:var(--ink-mute);margin:0}
+
+  .tabs{display:flex;border:2px solid var(--ink);margin-bottom:14px;flex-wrap:wrap}
+  .tabs button{flex:1 1 140px;border:0;border-right:2px solid var(--ink);background:var(--paper);color:var(--ink);
+    font-family:var(--disp);font-weight:700;font-size:13px;padding:10px 12px;cursor:pointer;letter-spacing:.03em;text-align:left}
+  .tabs button .k{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--ink-mute);display:block;text-transform:uppercase}
+  .tabs button:last-child{border-right:0}
+  .tabs button.active{background:var(--ink);color:var(--paper)}
+  .tabs button.active .k{color:#9aa3ab}
+  .tabs button:hover:not(.active){background:var(--paper-2)}
+  .blurb{font-size:12.5px;color:var(--ink-mute);margin:0 0 16px;min-height:1.2em}
+
+  .grid{display:grid;gap:22px;grid-template-columns:1fr}
+  @media(min-width:920px){.grid{grid-template-columns:minmax(0,430px) minmax(0,1fr);align-items:start}}
+
+  .scope{position:sticky;top:16px}
+  @media(max-width:919px){.scope{position:static}}
+  .screen{position:relative;background:var(--void);border:2px solid var(--ink);aspect-ratio:1/1;width:100%;overflow:hidden}
+  .screen canvas{display:block;width:100%;height:100%}
+  .corner{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:10px;color:#7a7a7a;letter-spacing:.1em;pointer-events:none}
+  .warn{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:10px;color:var(--signal);display:none;pointer-events:none}
+  .warn.on{display:block}
+  .fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
+    padding:24px;font-family:var(--mono);font-size:12px;color:var(--signal);line-height:1.7}
+
+  .bar{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+  button{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:.05em;background:var(--ink);color:var(--paper);border:0;padding:8px 12px;cursor:pointer}
+  button:hover{background:var(--signal)}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+  button.ghost:hover{background:var(--ink);color:var(--paper)}
+  button.ghost.active{background:var(--ink);color:var(--paper)}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .opts{margin-top:10px;display:flex;flex-wrap:wrap;gap:10px 16px;font-family:var(--mono);font-size:11px;align-items:center;min-height:1.2em}
+  .opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .opts .sep{color:var(--rule)}
+  .opts .lab{color:var(--ink-mute)}
+  .opts select{font-family:var(--mono);font-size:11px;border:1px solid var(--rule);background:#fff;padding:2px 4px}
+
+  .group{border:1px solid var(--rule);background:rgba(255,255,255,.55);margin-bottom:14px}
+  .ghead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--paper-2)}
+  .gname{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.04em}
+  .gexpr{font-family:var(--mono);font-size:11px;color:var(--ink-mute);word-break:break-word;padding:8px 12px 2px}
+  .gexpr b{color:var(--signal);font-weight:700}
+  .gnote{font-size:11.5px;color:var(--ink-mute);padding:0 12px 8px}
+  .gbtn{font-size:10.5px;padding:5px 9px}
+  .knobs{padding:2px 12px 12px}
+  .knob{display:grid;grid-template-columns:3.4em 1fr 4.8em;align-items:center;gap:9px;padding:3px 0}
+  .knob .id{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--signal)}
+  .knob .now{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+  .knob .now.moved{color:var(--signal);font-weight:700}
+  .track{position:relative;display:flex;align-items:center;min-width:0}
+  .track input{width:100%;margin:0;accent-color:var(--signal)}
+  .track .orig{position:absolute;top:50%;transform:translate(-50%,-50%);width:1px;height:15px;background:var(--ink);opacity:.45;pointer-events:none}
+
+  .codebox{margin-top:24px;border:2px solid var(--ink)}
+  .codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--ink);color:var(--paper);padding:8px 12px}
+  .codehead h2{font-family:var(--disp);font-size:13px;letter-spacing:.05em;margin:0}
+  textarea{width:100%;border:0;resize:vertical;min-height:110px;font-family:var(--mono);font-size:11px;line-height:1.7;padding:12px;background:#fff;color:var(--ink);display:block}
+  footer{margin-top:28px;border-top:2px solid var(--ink);padding-top:12px;font-size:12.5px;color:var(--ink-mute)}
+  footer ul{margin:0;padding-left:1.2em} footer li{margin-bottom:4px}
+  code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">つぶやき / 係数実験台 · 総合版</div>
+  <h1>ネタを<em>選んで</em>、直書きの定数をいじり倒す</h1>
+  <p class="sub">3つの生成コードを1画面に。上のタブで切り替え、黒い縦線が原典の値。</p>
+</header>
+
+<div class="tabs" id="tabs"></div>
+<p class="blurb" id="blurb"></p>
+
+<div class="grid">
+  <section class="scope">
+    <div class="screen" id="screen">
+      <div class="corner" id="corner"></div>
+      <div class="warn" id="warn">値が発散しています</div>
+      <div class="fallback" id="fallback"></div>
+    </div>
+
+    <div class="bar">
+      <button id="play">一時停止</button>
+      <button class="ghost" id="undo">1つ戻す</button>
+      <button class="ghost" id="reset">原典に戻す</button>
+      <button class="ghost" id="nudge">少しゆらす</button>
+      <button class="ghost" id="wild">大きく振る</button>
+    </div>
+
+    <div class="opts" id="opts"></div>
+  </section>
+
+  <section id="console"></section>
+</div>
+
+<div class="codebox">
+  <div class="codehead">
+    <h2 id="codetitle">今の数字で書き直したコード</h2>
+    <button class="gbtn" id="copy">コピー</button>
+  </div>
+  <textarea id="code" readonly spellcheck="false"></textarea>
+</div>
+
+<footer>
+  <ul id="notes"></ul>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  const screenEl = document.getElementById('screen');
+  const corner = document.getElementById('corner');
+  const warn = document.getElementById('warn');
+  const fallback = document.getElementById('fallback');
+
+  const disp = v => Math.abs(v) >= 1e4 ? (+v).toExponential(1).replace('+','') : String(Math.round(v*1000)/1000);
+  function jitterKnob(P, [id, def, lo, hi, st], amt){
+    const span = (hi - lo) * amt * (Math.random()*.6 + .2) * (Math.random() < .5 ? -1 : 1);
+    P[id] = Math.min(hi, Math.max(lo, Math.round((P[id] + span)/st)*st));
+  }
+  function mkCanvas(){
+    const c = document.createElement('canvas');
+    c.style.display = 'block'; c.style.width = '100%'; c.style.height = '100%';
+    screenEl.insertBefore(c, screenEl.firstChild);
+    return c;
+  }
+  const cssSize = () => screenEl.clientWidth || 400;
+
+  // ════════════════════════════════════════════════════════
+  //  ①  p5 / つぶやきProcessing ── 羽根
+  // ════════════════════════════════════════════════════════
+  function FeatherEngine(){
+    const SPEC = [
+      { g:'骨格', expr:'k = (<b>A</b> + cos(i/<b>B</b> − <b>C</b>t)) × cos(i/<b>D</b>)',
+        note:'羽根の刻みと本数。B が速い波、D が包む遅い波。',
+        ks:[ ['A',4,0,10,.1],['B',9,1,40,.1],['C',2,-4,4,.05],['D',35,5,120,.5] ] },
+      { g:'軸', expr:'e = y/<b>E</b> − <b>F</b>', note:'t を含まない静的な軸。位置と縦の下地。',
+        ks:[ ['E',7,1,30,.1],['F',13,-30,30,.5] ] },
+      { g:'うねり', expr:'d = mag(k, e) + sin(e/<b>G</b> + t/<b>H</b>) − <b>I</b>', note:'d は縦位置と回転位相を兼ねる形の骨。',
+        ks:[ ['G',9,1,40,.1],['H',2,-4,4,.05],['I',4,-10,10,.1] ] },
+      { g:'張り出し', expr:'q = <b>J</b>sin(<b>K</b>k) − (y/<b>L</b>)·k·(<b>M</b> + k·sin(<b>N</b>cos(e) − <b>O</b>d + t))',
+        note:'中心からどれだけ横に伸びるか。M が基本の太さ。',
+        ks:[ ['J',2,-10,10,.1],['K',3,0,10,.05],['L',35,5,120,.5],['M',9,0,20,.1],['N',9,0,20,.1],['O',2,-6,6,.05] ] },
+      { g:'投影', expr:'x = q + <b>P</b>cos(c) + 中央 / y = q·sin(c) + <b>Q</b>d', note:'画面に置く段。c = d − t。',
+        ks:[ ['P',40,0,150,1],['Q',35,5,80,.5] ] },
+      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)', note:'点の数と、i を渡すスケール。',
+        ks:[ ['R',235,50,600,1],['CNT',10000,1000,20000,500] ] }
+    ];
+    const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
+    let P = { ...ORIG }; const history = [];
+    let cv, ctx, buf = new Float32Array(40000), view = {s:1,ox:0,oy:0}, warmed = false, t = 0, S = 400, dpr = 1;
+    let fitBox, freezeBox;
+
+    function compute(i, tt, p, out){
+      const y = i/p.R;
+      const k = (p.A + Math.cos(i/p.B - tt*p.C)) * Math.cos(i/p.D);
+      const e = y/p.E - p.F;
+      const d = Math.hypot(k, e) + Math.sin(e/p.G + tt/p.H) - p.I;
+      const q = p.J*Math.sin(k*p.K) - y/p.L*k*(p.M + k*Math.sin(Math.cos(e)*p.N - d*p.O + tt));
+      const c = d - tt;
+      out[0] = q + p.P*Math.cos(c); out[1] = q*Math.sin(c) + p.Q*d;
+    }
+    function fill(tt){
+      const n = Math.round(P.CNT), o = [0,0]; if (buf.length < n*2) buf = new Float32Array(n*2);
+      let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,bad=0;
+      for (let i=n-1,j=0; i>=0; i--,j+=2){
+        compute(i, tt, P, o); const x=o[0],y=o[1];
+        if (!isFinite(x)||!isFinite(y)||Math.abs(x)>1e6||Math.abs(y)>1e6){ bad++; buf[j]=NaN; continue; }
+        buf[j]=x; buf[j+1]=y;
+        if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      }
+      return { n, bad, minx, maxx, miny, maxy };
+    }
+    return {
+      id:'p5', label:'羽根', kind:'p5', SPEC, ORIG, P, history,
+      get P(){ return P; }, set P(v){ P = v; },
+      blurb:'つぶやきProcessing。1本の式に直書きされた定数を全部つまみに。効くのは D・R・Q。',
+      note:'D（羽根の本数）R（点の詰まり）Q（縦の伸び）が特に強い。「大きく振る」でほぼ壊れる。',
+      buildOpts(el){
+        el.innerHTML = '<label><input type="checkbox" id="f_fit" checked>はみ出しを自動補正</label>' +
+                       '<label><input type="checkbox" id="f_frz">t を止める</label>';
+        fitBox = el.querySelector('#f_fit'); freezeBox = el.querySelector('#f_frz');
+      },
+      mount(){ cv = mkCanvas(); ctx = cv.getContext('2d'); this.resize(); },
+      unmount(){ if (cv) cv.remove(); },
+      resize(){ dpr = Math.min(devicePixelRatio||1,2); S = cssSize(); cv.width = S*dpr; cv.height = S*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); warmed = false; },
+      reset(){ P = { ...ORIG }; warmed = false; },
+      resetP(v){ P = v; warmed = false; },
+      frame(running){
+        if (running && !(freezeBox && freezeBox.checked)) { t += Math.PI/80; if (t > 40*Math.PI) t -= 40*Math.PI; }
+        const n = Math.round(P.CNT), b = fill(t), fit = fitBox && fitBox.checked;
+        let s=1, ox=0, oy=0;
+        if (fit && b.maxx > b.minx){
+          const w = Math.max(b.maxx-b.minx, b.maxy-b.miny, 1e-6), target = Math.min(0.95*S/w, 6*S/400), kk = warmed?.12:1;
+          view.s += (target-view.s)*kk; view.ox += ((b.minx+b.maxx)/2-view.ox)*kk; view.oy += ((b.miny+b.maxy)/2-view.oy)*kk;
+          warmed = true; s=view.s; ox=view.ox; oy=view.oy;
+        } else { view.s = 1; warmed = false; }
+        ctx.fillStyle = 'rgb(7,8,9)'; ctx.fillRect(0,0,S,S);
+        ctx.fillStyle = 'rgba(255,255,255,0.42)';
+        const cx = S/2, cy = S/2;
+        if (fit){ for (let j=0;j<n*2;j+=2){ const x=buf[j]; if(x!==x)continue; ctx.fillRect((x-ox)*s+cx,(buf[j+1]-oy)*s+cy,1,1); } }
+        else    { for (let j=0;j<n*2;j+=2){ const x=buf[j]; if(x!==x)continue; ctx.fillRect(x*0.5+cx,buf[j+1]*0.5+cy,1,1); } }
+        warn.classList.toggle('on', b.bad > n*0.02);
+        corner.textContent = n.toLocaleString() + ' pts' + (fit ? '  ×'+view.s.toFixed(2) : '');
+      },
+      code(){
+        const f = v => (Math.round(v*100)/100).toString();
+        const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
+        const mul = (s,v) => v<0 ? '+'+s+'*'+f(-v) : '-'+s+'*'+f(v);
+        return 'a=(y,d=mag(k=('+f(P.A)+'+cos(i/'+f(P.B)+'-t*'+f(P.C)+'))*cos(i/'+f(P.D)+'),'+
+          'e=y/'+f(P.E)+neg(P.F)+')+sin(e/'+f(P.G)+'+t/'+f(P.H)+')'+neg(P.I)+')=>'+
+          'point((q='+f(P.J)+'*sin(k*'+f(P.K)+')-y/'+f(P.L)+'*k*('+f(P.M)+
+          '+k*sin(cos(e)*'+f(P.N)+mul('d',P.O)+'+t)))+'+f(P.P)+'*cos(c=d-t)+200,q*sin(c)+d*'+f(P.Q)+')\n'+
+          't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
+          'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
+      }
+    };
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  ②  GLSL / つぶやきGLSL ── レイマーチ・フラクタル
+  // ════════════════════════════════════════════════════════
+  function GlslEngine(){
+    const SPEC = [
+      { g:'レイマーチ', expr:'i を <b>I</b> 回進め、1歩を <b>STEP</b> で刻む', note:'光線を前に進める回数と刻み。',
+        ks:[ ['I',100,10,300,1],['STEP',900,100,3000,10] ] },
+      { g:'カメラ', expr:'p = vec3(uv·g, g − <b>CAM</b> + sin(t·<b>ZS</b>)); p.zy ·= rot(t·<b>R2</b>)', note:'引き・前後の揺れ・回転。',
+        ks:[ ['CAM',3,0,8,.1],['ZS',.5,0,2,.05],['R2',.5,-2,2,.05] ] },
+      { g:'折り・回転', expr:'p ·= rot3D(t + <b>AO</b>, vec3(<b>AX</b>, <b>AYM</b>·smoothstep(-8,8,<b>SV</b>), <b>AZ</b>)) を <b>J</b> 回', note:'折るたびに空間を回す軸と角度。',
+        ks:[ ['J',6,0,12,1],['AO',.5,-3.14,3.14,.02],['AX',5,-10,10,.1],['AYM',2,0,6,.1],['SV',0,-8,8,.1],['AZ',4,-10,10,.1] ] },
+      { g:'フォールド', expr:'p = abs(p × <b>FS</b>) − <b>FOLD</b>', note:'空間を折り返す本体。一番よく化ける。',
+        ks:[ ['FS',2,0,4,.02],['FOLD',1,0,3,.02] ] },
+      { g:'距離', expr:'e = (length(p) × <b>DS</b> − <b>RAD</b>) / STEP', note:'折った空間内の面の位置。',
+        ks:[ ['DS',5,.5,15,.1],['RAD',6,0,20,.1] ] },
+      { g:'発光', expr:'o += exp(−e × <b>SHARP</b>) / <b>GLOW</b>', note:'面に近いほど光る。細さと明るさ。',
+        ks:[ ['SHARP',1e6,5e4,5e6,5e4],['GLOW',70,10,300,1] ] }
+    ];
+    const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
+    let P = { ...ORIG }; const history = [];
+    let cv, gl, prog, uni = {}, t = 0, W = 1, quality = 0.75, ok = false, freezeBox, qBtns = [];
+
+    const VERT = `#version 300 es
+    void main(){ vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); gl_Position = vec4(p*2.0-1.0,0.,1.); }`;
+    const FRAG = `#version 300 es
+    precision highp float;
+    uniform vec2 r; uniform float t;
+    uniform float uI,uJ,uSTEP,uCAM,uZS,uR2,uAO,uAX,uAYM,uSV,uAZ,uFS,uFOLD,uDS,uRAD,uSHARP,uGLOW;
+    out vec4 fragColor;
+    mat2 rotate2D(float a){ return mat2(cos(a),sin(a),-sin(a),cos(a)); }
+    mat3 rotate3D(float angle, vec3 axis){
+      vec3 a = normalize(axis); float s=sin(angle),c=cos(angle),o=1.-c;
+      return mat3(a.x*a.x*o+c,a.y*a.x*o+a.z*s,a.z*a.x*o-a.y*s,
+                  a.x*a.y*o-a.z*s,a.y*a.y*o+c,a.z*a.y*o+a.x*s,
+                  a.x*a.z*o+a.y*s,a.y*a.z*o-a.x*s,a.z*a.z*o+c);
+    }
+    void main(){
+      vec2 FC = gl_FragCoord.xy; vec4 o = vec4(0.); float e=0., g=0.;
+      for(float i=0.; i<uI; i++){
+        vec3 p = vec3((FC - r*0.5)/r.y*g, g - uCAM + sin(t*uZS));
+        p.zy *= rotate2D(t*uR2);
+        for(float j=0.; j<uJ; j++){
+          p *= rotate3D(t + uAO, vec3(uAX, uAYM*smoothstep(-8.0,8.0,uSV), uAZ));
+          p = abs(p*uFS) - uFOLD;
+        }
+        g += e = (length(p.yzx)*uDS - uRAD)/uSTEP;
+        o += exp(-e*uSHARP)/uGLOW;
+      }
+      fragColor = vec4(o.rgb, 1.0);
+    }`;
+    function mk(type, src){ const s = gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+
+    return {
+      id:'glsl', label:'フラクタル', kind:'glsl', SPEC, ORIG, P, history,
+      get P(){ return P; }, set P(v){ P = v; },
+      blurb:'つぶやきGLSL。霧の中を歩いて（レイマーチ）万華鏡の折り（abs）で作った模様の縁を発光で描く。',
+      note:'FS・FOLD・J が形を、GLOW・SHARP が明るさを決める。足し算で描くので暗転／白飛びしやすい。',
+      buildOpts(el){
+        el.innerHTML = '<label><input type="checkbox" id="g_frz">t を止める</label>' +
+          '<span class="sep">|</span><span class="lab">画質</span>' +
+          '<button class="ghost gbtn" data-q="0.5">低</button><button class="ghost gbtn" data-q="0.75">中</button><button class="ghost gbtn" data-q="1">高</button>';
+        freezeBox = el.querySelector('#g_frz');
+        qBtns = [...el.querySelectorAll('[data-q]')];
+        qBtns.forEach(b => b.onclick = () => { quality = +b.dataset.q; qBtns.forEach(x=>x.classList.toggle('active',x===b)); this.resize(); });
+        qBtns.find(b => +b.dataset.q === quality).classList.add('active');
+      },
+      mount(){
+        cv = mkCanvas(); gl = cv.getContext('webgl2', { antialias:false });
+        if (!gl){ fallback.textContent = 'このネタは WebGL2 が必要です。最新の Chrome / Safari / Firefox でお試しください。'; fallback.style.display='flex'; return; }
+        try {
+          prog = gl.createProgram();
+          gl.attachShader(prog, mk(gl.VERTEX_SHADER, VERT));
+          gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FRAG));
+          gl.linkProgram(prog);
+          if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+        } catch(err){ fallback.textContent = 'シェーダのコンパイルに失敗: '+err.message; fallback.style.display='flex'; return; }
+        gl.useProgram(prog); gl.bindVertexArray(gl.createVertexArray());
+        uni = { r: gl.getUniformLocation(prog,'r'), t: gl.getUniformLocation(prog,'t') };
+        for (const id in ORIG) uni[id] = gl.getUniformLocation(prog, 'u'+id);
+        ok = true; this.resize();
+      },
+      unmount(){ fallback.style.display='none'; if (gl){ const e=gl.getExtension('WEBGL_lose_context'); if(e)e.loseContext(); } if (cv) cv.remove(); },
+      resize(){ if(!ok) return; const css=cssSize(); let px=Math.round(css*Math.min(devicePixelRatio||1,2)*quality); px=Math.max(120,Math.min(px,760)); W=px; cv.width=px; cv.height=px; gl.viewport(0,0,px,px); },
+      reset(){ P = { ...ORIG }; },
+      resetP(v){ P = v; },
+      frame(running){
+        if(!ok) return;
+        if (running && !(freezeBox && freezeBox.checked)) t += 1/60;
+        gl.uniform2f(uni.r, W, W); gl.uniform1f(uni.t, t);
+        for (const id in P) gl.uniform1f(uni[id], P[id]);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        corner.textContent = W + '²  ·  I'+Math.round(P.I)+' J'+Math.round(P.J);
+      },
+      code(){
+        const f = v => { const n = Math.round(v*1000)/1000; return Number.isInteger(n) ? n+'.' : String(n); };
+        const ci = v => String(Math.round(v));
+        return 'for(float i,e,g;i++<'+ci(P.I)+';){vec3 p=vec3((FC.xy-r*.5)/r.y*g,g-'+f(P.CAM)+'+sin(t*'+f(P.ZS)+
+          '));p.zy*=rotate2D(t*'+f(P.R2)+');for(int j;j++<'+ci(P.J)+';)p*=rotate3D(t+'+f(P.AO)+',vec3('+f(P.AX)+','+f(P.AYM)+
+          '*smoothstep(-8.,8.,'+f(P.SV)+'),'+f(P.AZ)+')),p=abs(p*'+f(P.FS)+')-'+f(P.FOLD)+';g+=e=(length(p.yzx)*'+f(P.DS)+
+          '-'+f(P.RAD)+')/'+f(P.STEP)+';o+=exp(-e*'+f(P.SHARP)+')/'+f(P.GLOW)+';}';
+      }
+    };
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  ③  Wolfram ── 友と敵のダンス (Simon Woods)
+  // ════════════════════════════════════════════════════════
+  function SwarmEngine(){
+    const SPEC = [
+      { g:'群れ', expr:'n 人の踊り手、たまに友と敵を選び直す', note:'踊り手の数と「気が変わる」頻度。',
+        ks:[ ['N',1000,100,4000,50],['MIND',100,0,600,5] ] },
+      { g:'動き', expr:'x = <b>C</b> x + <b>PS</b> f[友] − <b>QS</b> f[敵]', note:'中心へ縮み、友へ寄り、敵から離れる。3つの係数が主役。',
+        ks:[ ['C',0.995,0.9,1.02,.001],['PS',0.02,0,0.12,.002],['QS',0.01,0,0.12,.002],['SOFT',0.01,.002,0.2,.002] ] },
+      { g:'見た目', expr:'表示範囲・点の大きさ・速度で色づけ', note:'CS を 0 にすると白。上げると速い踊り手が暖色に。',
+        ks:[ ['ZOOM',2,0.4,6,.1],['PT',1.6,0.5,5,.1],['OPACITY',0.85,0.1,1,.05],['CS',22,0,120,1] ] }
+    ];
+    const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
+    let P = { ...ORIG }; const history = [];
+    let cv, ctx, S = 400, dpr = 1, initMode = 'random';
+    let X, X2, VX, PF, QF, cap = 0;
+    const rint = n => (Math.random()*n)|0;
+
+    function reinit(){
+      const n = Math.round(P.N);
+      X = new Float32Array(n*2); X2 = new Float32Array(n*2); VX = new Float32Array(n*2);
+      PF = new Int32Array(n); QF = new Int32Array(n); cap = n;
+      if (initMode === 'ring'){
+        for (let i=0;i<n;i++){ const a = i/(n)*Math.PI*2; X[i*2]=Math.sin(a); X[i*2+1]=-Math.cos(a); PF[i]=(i+1)%n; QF[i]=rint(n); }
+      } else {
+        for (let i=0;i<n;i++){ X[i*2]=Math.random()*2-1; X[i*2+1]=Math.random()*2-1; PF[i]=rint(n); QF[i]=rint(n); }
+      }
+    }
+    function step(){
+      const n = Math.round(P.N); if (cap < n) reinit();
+      const c=P.C, ps=P.PS, qs=P.QS, soft=P.SOFT;
+      if (rint(n) < P.MIND){ const i = rint(n); PF[i]=rint(n); QF[i]=rint(n); }
+      for (let i=0;i<n;i++){
+        const xi=X[i*2], yi=X[i*2+1];
+        let fi=PF[i]; if(fi>=n)fi=fi%n; let dx=X[fi*2]-xi, dy=X[fi*2+1]-yi; let m=soft+Math.hypot(dx,dy); const px=dx/m, py=dy/m;
+        let ei=QF[i]; if(ei>=n)ei=ei%n; dx=X[ei*2]-xi; dy=X[ei*2+1]-yi; m=soft+Math.hypot(dx,dy); const qx=dx/m, qy=dy/m;
+        const nx=c*xi+ps*px-qs*qx, ny=c*yi+ps*py-qs*qy;
+        X2[i*2]=nx; X2[i*2+1]=ny; VX[i*2]=nx-xi; VX[i*2+1]=ny-yi;
+      }
+      const tmp=X; X=X2; X2=tmp;
+    }
+    function heat(v){ v=v<0?0:v>1?1:v;
+      const r=Math.round(255*Math.min(1,v*1.7)), g=Math.round(255*Math.min(1,Math.max(0,v*1.5-0.45))), b=Math.round(255*Math.max(0,1.05-v*1.35));
+      return 'rgb('+r+','+g+','+b+')';
+    }
+    return {
+      id:'swarm', label:'友と敵のダンス', kind:'swarm', SPEC, ORIG, P, history,
+      get P(){ return P; }, set P(v){ P = v; },
+      blurb:'Wolfram の名作 (Simon Woods)。各点が友へ寄り敵から逃げるだけで、渦巻く群れになる。',
+      note:'PS（友への歩幅）と QS（敵からの歩幅）の差が渦の締まりを決める。C を 1 に近づけると広がる。',
+      buildOpts(el){
+        el.innerHTML = '<span class="lab">初期配置</span><select id="w_mode"><option value="random">ランダム</option><option value="ring">リング</option></select>' +
+          '<button class="ghost gbtn" id="w_re">散らし直す</button>';
+        el.querySelector('#w_mode').onchange = e => { initMode = e.target.value; reinit(); };
+        el.querySelector('#w_re').onclick = () => reinit();
+      },
+      mount(){ cv = mkCanvas(); ctx = cv.getContext('2d'); this.resize(); reinit(); },
+      unmount(){ if (cv) cv.remove(); },
+      resize(){ dpr = Math.min(devicePixelRatio||1,2); S = cssSize(); cv.width = S*dpr; cv.height = S*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); },
+      reset(){ P = { ...ORIG }; reinit(); },
+      resetP(v){ P = v; if (cap !== Math.round(P.N)) reinit(); },
+      frame(running){
+        if (running) step();
+        const n = Math.round(P.N), half = S/2, zoom = P.ZOOM, pt = P.PT, hs = pt/2, cs = P.CS;
+        ctx.fillStyle = 'rgb(7,8,9)'; ctx.fillRect(0,0,S,S);
+        ctx.globalAlpha = P.OPACITY;
+        let off = 0;
+        if (cs <= 0){ ctx.fillStyle = '#fff';
+          for (let i=0;i<n;i++){ const sx=half+X[i*2]/zoom*half, sy=half-X[i*2+1]/zoom*half; ctx.fillRect(sx-hs,sy-hs,pt,pt); off++; }
+        } else {
+          for (let i=0;i<n;i++){
+            const sp = Math.hypot(VX[i*2],VX[i*2+1])*cs;
+            ctx.fillStyle = heat(sp);
+            const sx=half+X[i*2]/zoom*half, sy=half-X[i*2+1]/zoom*half; ctx.fillRect(sx-hs,sy-hs,pt,pt); off++;
+          }
+        }
+        ctx.globalAlpha = 1;
+        warn.classList.remove('on');
+        corner.textContent = n.toLocaleString() + ' dancers';
+      },
+      code(){
+        const f = v => String(Math.round(v*10000)/10000);
+        return 'n = '+Math.round(P.N)+';\n'+
+          'r := RandomInteger[{1, n}];\n'+
+          'f := (#/('+f(P.SOFT)+' + Sqrt[#.#])) & /@ (x[[#]] - x) &;\n'+
+          's := With[{r1 = r}, p[[r1]] = r; q[[r1]] = r];\n'+
+          'x = RandomReal[{-1, 1}, {n, 2}];\n'+
+          '{p, q} = RandomInteger[{1, n}, {2, n}];\n'+
+          'Graphics[{PointSize[0.007], Dynamic[If[r < '+Math.round(P.MIND)+', s];\n'+
+          'Point[x = '+f(P.C)+' x + '+f(P.PS)+' f[p] - '+f(P.QS)+' f[q]]]}, PlotRange -> '+f(P.ZOOM)+']';
+      }
+    };
+  }
+
+  // ════════════════════════════════════════════════════════
+  //  シェル（タブ・つまみ・ループ）
+  // ════════════════════════════════════════════════════════
+  const ENGINES = [FeatherEngine(), GlslEngine(), SwarmEngine()];
+  const tabsEl = document.getElementById('tabs'), consoleEl = document.getElementById('console');
+  const optsEl = document.getElementById('opts'), blurbEl = document.getElementById('blurb');
+  const notesEl = document.getElementById('notes'), ta = document.getElementById('code');
+  let cur = null, running = true, inputs = {}, nows = {};
+
+  const playBtn = document.getElementById('play');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  running = !reduced; playBtn.textContent = running ? '一時停止' : '再生';
+
+  function pushHist(){ cur.history.push({ ...cur.P }); if (cur.history.length > 40) cur.history.shift(); }
+  function syncOne(id){ nows[id].textContent = disp(cur.P[id]); nows[id].classList.toggle('moved', cur.P[id] !== cur.ORIG[id]); }
+  function applyP(){ for (const id in cur.P){ if(inputs[id]){ inputs[id].value = cur.P[id]; syncOne(id); } } updateCode(); }
+  function updateCode(){ ta.value = cur.code(); }
+
+  function buildConsole(){
+    consoleEl.innerHTML = ''; inputs = {}; nows = {};
+    cur.SPEC.forEach(sec => {
+      const grp = document.createElement('div'); grp.className = 'group';
+      grp.innerHTML = '<div class="ghead"><span class="gname">'+sec.g+'</span>'+
+        '<button class="gbtn ghost" data-g="1">ここだけ振る</button></div>'+
+        '<div class="gexpr">'+sec.expr+'</div><div class="gnote">'+sec.note+'</div>';
+      const box = document.createElement('div'); box.className = 'knobs';
+      sec.ks.forEach(k => {
+        const [id, def, lo, hi, st] = k;
+        const row = document.createElement('div'); row.className = 'knob';
+        row.innerHTML = '<span class="id">'+id+'</span>'+
+          '<span class="track"><input type="range" min="'+lo+'" max="'+hi+'" step="'+st+'" value="'+def+'" aria-label="'+id+'">'+
+          '<span class="orig" style="left:'+((def-lo)/(hi-lo)*100)+'%"></span></span>'+
+          '<span class="now">'+disp(def)+'</span>';
+        const inp = row.querySelector('input');
+        inp.oninput = () => { pushHist(); cur.P[id] = +inp.value; syncOne(id); updateCode(); };
+        inputs[id] = inp; nows[id] = row.querySelector('.now');
+        box.appendChild(row);
+      });
+      grp.appendChild(box); consoleEl.appendChild(grp);
+      grp.querySelector('[data-g]').onclick = () => { pushHist(); sec.ks.forEach(k => jitterKnob(cur.P, k, .5)); applyP(); };
+    });
+  }
+
+  function activate(engine){
+    if (cur){ cur.unmount(); }
+    fallback.style.display = 'none'; warn.classList.remove('on');
+    cur = engine; cur.mount();
+    blurbEl.textContent = cur.blurb;
+    optsEl.innerHTML = ''; cur.buildOpts(optsEl);
+    buildConsole(); applyP();
+    notesEl.innerHTML = '<li>'+cur.note+'</li>'+
+      '<li>黒い縦線が原典の値。<b>「少しゆらす」→「大きく振る」</b>の順で崩れ方の癖を掴むのが探しやすい。</li>'+
+      '<li>下のコードは今の数字で書き直したもの。'+(cur.id==='p5'?'p5.js（OpenProcessing / twigl classic）':cur.id==='glsl'?'twigl の geekest モード':'Mathematica / Wolfram 言語')+'にそのまま貼れる。</li>';
+    document.getElementById('codetitle').textContent = '今の数字で書き直したコード（'+
+      (cur.id==='p5'?'p5.js':cur.id==='glsl'?'GLSL / twigl':'Wolfram')+'）';
+    [...tabsEl.children].forEach(b => b.classList.toggle('active', b.dataset.id === cur.id));
+    cur.resize();
+  }
+
+  ENGINES.forEach(e => {
+    const b = document.createElement('button'); b.dataset.id = e.id;
+    b.innerHTML = '<span class="k">'+(e.id==='p5'?'Processing':e.id==='glsl'?'GLSL':'Wolfram')+'</span>'+e.label;
+    b.onclick = () => activate(e); tabsEl.appendChild(b);
+  });
+
+  playBtn.onclick = () => { running = !running; playBtn.textContent = running ? '一時停止' : '再生'; };
+  document.getElementById('reset').onclick = () => { pushHist(); cur.reset(); applyP(); };
+  document.getElementById('undo').onclick  = () => { const h = cur.history.pop(); if (h){ cur.resetP(h); applyP(); } };
+  document.getElementById('nudge').onclick = () => { pushHist(); cur.SPEC.forEach(s => s.ks.forEach(k => jitterKnob(cur.P, k, .06))); if(cur.resetP)cur.resetP(cur.P); applyP(); };
+  document.getElementById('wild').onclick  = () => { pushHist(); cur.SPEC.forEach(s => s.ks.forEach(k => jitterKnob(cur.P, k, .4)));  if(cur.resetP)cur.resetP(cur.P); applyP(); };
+
+  document.getElementById('copy').onclick = async e => {
+    try { await navigator.clipboard.writeText(ta.value); e.target.textContent = 'コピーした'; }
+    catch { ta.select(); e.target.textContent = '選択した'; }
+    setTimeout(() => e.target.textContent = 'コピー', 1400);
+  };
+
+  addEventListener('resize', () => { if (cur) cur.resize(); });
+  function loop(now){ if (cur) cur.frame(running); requestAnimationFrame(loop); }
+
+  activate(ENGINES[0]);
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
