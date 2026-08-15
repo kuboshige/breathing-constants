@@ -159,37 +159,14 @@
   // ════════════════════════════════════════════════════════
   //  ①  p5 / つぶやきProcessing ── 羽根
   // ════════════════════════════════════════════════════════
-  function FeatherEngine(){
-    const SPEC = [
-      { g:'骨格', expr:'k = (<b>A</b> + cos(i/<b>B</b> − <b>C</b>t)) × cos(i/<b>D</b>)',
-        note:'羽根の刻みと本数。B が速い波、D が包む遅い波。',
-        ks:[ ['A',4,0,10,.1],['B',9,1,40,.1],['C',2,-4,4,.05],['D',35,5,120,.5] ] },
-      { g:'軸', expr:'e = y/<b>E</b> − <b>F</b>', note:'t を含まない静的な軸。位置と縦の下地。',
-        ks:[ ['E',7,1,30,.1],['F',13,-30,30,.5] ] },
-      { g:'うねり', expr:'d = mag(k, e) + sin(e/<b>G</b> + t/<b>H</b>) − <b>I</b>', note:'d は縦位置と回転位相を兼ねる形の骨。',
-        ks:[ ['G',9,1,40,.1],['H',2,-4,4,.05],['I',4,-10,10,.1] ] },
-      { g:'張り出し', expr:'q = <b>J</b>sin(<b>K</b>k) − (y/<b>L</b>)·k·(<b>M</b> + k·sin(<b>N</b>cos(e) − <b>O</b>d + t))',
-        note:'中心からどれだけ横に伸びるか。M が基本の太さ。',
-        ks:[ ['J',2,-10,10,.1],['K',3,0,10,.05],['L',35,5,120,.5],['M',9,0,20,.1],['N',9,0,20,.1],['O',2,-6,6,.05] ] },
-      { g:'投影', expr:'x = q + <b>P</b>cos(c) + 中央 / y = q·sin(c) + <b>Q</b>d', note:'画面に置く段。c = d − t。',
-        ks:[ ['P',40,0,150,1],['Q',35,5,80,.5] ] },
-      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)', note:'点の数と、i を渡すスケール。',
-        ks:[ ['R',235,50,600,1],['CNT',10000,1000,20000,500] ] }
-    ];
+  //  ── 汎用 p5 エンジン（Canvas2D・自動フィット）。compute と code を差し替えて使う ──
+  function makeP5Engine(cfg){
+    const SPEC = cfg.SPEC;
     const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
     let P = { ...ORIG }; const history = [];
     let cv, ctx, buf = new Float32Array(40000), view = {s:1,ox:0,oy:0}, warmed = false, t = 0, S = 400, dpr = 1;
     let fitBox, freezeBox;
-
-    function compute(i, tt, p, out){
-      const y = i/p.R;
-      const k = (p.A + Math.cos(i/p.B - tt*p.C)) * Math.cos(i/p.D);
-      const e = y/p.E - p.F;
-      const d = Math.hypot(k, e) + Math.sin(e/p.G + tt/p.H) - p.I;
-      const q = p.J*Math.sin(k*p.K) - y/p.L*k*(p.M + k*Math.sin(Math.cos(e)*p.N - d*p.O + tt));
-      const c = d - tt;
-      out[0] = q + p.P*Math.cos(c); out[1] = q*Math.sin(c) + p.Q*d;
-    }
+    const compute = cfg.compute;
     function fill(tt){
       const n = Math.round(P.CNT), o = [0,0]; if (buf.length < n*2) buf = new Float32Array(n*2);
       let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,bad=0;
@@ -202,14 +179,14 @@
       return { n, bad, minx, maxx, miny, maxy };
     }
     return {
-      id:'p5', label:'羽根', kind:'p5', SPEC, ORIG, P, history,
+      id:cfg.id, label:cfg.label, kind:'p5', SPEC, ORIG, history,
+      langShort:'Processing', codeLang:'p5.js', pasteTarget:'p5.js（OpenProcessing / twigl classic）',
       get P(){ return P; }, set P(v){ P = v; },
-      blurb:'つぶやきProcessing。1本の式に直書きされた定数を全部つまみに。効くのは D・R・Q。',
-      note:'D（羽根の本数）R（点の詰まり）Q（縦の伸び）が特に強い。「大きく振る」でほぼ壊れる。',
+      blurb:cfg.blurb, note:cfg.note,
       buildOpts(el){
-        el.innerHTML = '<label><input type="checkbox" id="f_fit" checked>はみ出しを自動補正</label>' +
-                       '<label><input type="checkbox" id="f_frz">t を止める</label>';
-        fitBox = el.querySelector('#f_fit'); freezeBox = el.querySelector('#f_frz');
+        el.innerHTML = '<label><input type="checkbox" class="e_fit" '+(cfg.fitDefault!==false?'checked':'')+'>はみ出しを自動補正</label>' +
+                       '<label><input type="checkbox" class="e_frz">t を止める</label>';
+        fitBox = el.querySelector('.e_fit'); freezeBox = el.querySelector('.e_frz');
       },
       mount(){ cv = mkCanvas(); ctx = cv.getContext('2d'); this.resize(); },
       unmount(){ if (cv) cv.remove(); },
@@ -229,23 +206,99 @@
         ctx.fillStyle = 'rgba(255,255,255,0.42)';
         const cx = S/2, cy = S/2;
         if (fit){ for (let j=0;j<n*2;j+=2){ const x=buf[j]; if(x!==x)continue; ctx.fillRect((x-ox)*s+cx,(buf[j+1]-oy)*s+cy,1,1); } }
-        else    { for (let j=0;j<n*2;j+=2){ const x=buf[j]; if(x!==x)continue; ctx.fillRect(x*0.5+cx,buf[j+1]*0.5+cy,1,1); } }
+        else    { const sc=S/400; for (let j=0;j<n*2;j+=2){ const x=buf[j]; if(x!==x)continue; ctx.fillRect(x*sc,buf[j+1]*sc,1,1); } }
         warn.classList.toggle('on', b.bad > n*0.02);
         corner.textContent = n.toLocaleString() + ' pts' + (fit ? '  ×'+view.s.toFixed(2) : '');
       },
-      code(){
-        const f = v => (Math.round(v*100)/100).toString();
-        const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
-        const mul = (s,v) => v<0 ? '+'+s+'*'+f(-v) : '-'+s+'*'+f(v);
-        return 'a=(y,d=mag(k=('+f(P.A)+'+cos(i/'+f(P.B)+'-t*'+f(P.C)+'))*cos(i/'+f(P.D)+'),'+
-          'e=y/'+f(P.E)+neg(P.F)+')+sin(e/'+f(P.G)+'+t/'+f(P.H)+')'+neg(P.I)+')=>'+
-          'point((q='+f(P.J)+'*sin(k*'+f(P.K)+')-y/'+f(P.L)+'*k*('+f(P.M)+
-          '+k*sin(cos(e)*'+f(P.N)+mul('d',P.O)+'+t)))+'+f(P.P)+'*cos(c=d-t)+200,q*sin(c)+d*'+f(P.Q)+')\n'+
-          't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
-          'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
-      }
+      code(){ return cfg.code(P); }
     };
   }
+
+  // ①  羽根（最初のつぶやきProcessing）
+  const FEATHER_CFG = {
+    id:'p5', label:'羽根',
+    blurb:'つぶやきProcessing。1本の式に直書きされた定数を全部つまみに。効くのは D・R・Q。',
+    note:'D（羽根の本数）R（点の詰まり）Q（縦の伸び）が特に強い。「大きく振る」でほぼ壊れる。',
+    SPEC:[
+      { g:'骨格', expr:'k = (<b>A</b> + cos(i/<b>B</b> − <b>C</b>t)) × cos(i/<b>D</b>)',
+        note:'羽根の刻みと本数。B が速い波、D が包む遅い波。',
+        ks:[ ['A',4,0,10,.1],['B',9,1,40,.1],['C',2,-4,4,.05],['D',35,5,120,.5] ] },
+      { g:'軸', expr:'e = y/<b>E</b> − <b>F</b>', note:'t を含まない静的な軸。位置と縦の下地。',
+        ks:[ ['E',7,1,30,.1],['F',13,-30,30,.5] ] },
+      { g:'うねり', expr:'d = mag(k, e) + sin(e/<b>G</b> + t/<b>H</b>) − <b>I</b>', note:'d は縦位置と回転位相を兼ねる形の骨。',
+        ks:[ ['G',9,1,40,.1],['H',2,-4,4,.05],['I',4,-10,10,.1] ] },
+      { g:'張り出し', expr:'q = <b>J</b>sin(<b>K</b>k) − (y/<b>L</b>)·k·(<b>M</b> + k·sin(<b>N</b>cos(e) − <b>O</b>d + t))',
+        note:'中心からどれだけ横に伸びるか。M が基本の太さ。',
+        ks:[ ['J',2,-10,10,.1],['K',3,0,10,.05],['L',35,5,120,.5],['M',9,0,20,.1],['N',9,0,20,.1],['O',2,-6,6,.05] ] },
+      { g:'投影', expr:'x = q + <b>P</b>cos(c) + 中央 / y = q·sin(c) + <b>Q</b>d', note:'画面に置く段。c = d − t。',
+        ks:[ ['P',40,0,150,1],['Q',35,5,80,.5] ] },
+      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)', note:'点の数と、i を渡すスケール。',
+        ks:[ ['R',235,50,600,1],['CNT',10000,1000,20000,500] ] }
+    ],
+    compute(i, tt, p, out){
+      const y = i/p.R;
+      const k = (p.A + Math.cos(i/p.B - tt*p.C)) * Math.cos(i/p.D);
+      const e = y/p.E - p.F;
+      const d = Math.hypot(k, e) + Math.sin(e/p.G + tt/p.H) - p.I;
+      const q = p.J*Math.sin(k*p.K) - y/p.L*k*(p.M + k*Math.sin(Math.cos(e)*p.N - d*p.O + tt));
+      const c = d - tt;
+      out[0] = q + p.P*Math.cos(c); out[1] = q*Math.sin(c) + p.Q*d;
+    },
+    code(P){
+      const f = v => (Math.round(v*100)/100).toString();
+      const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
+      const mul = (s,v) => v<0 ? '+'+s+'*'+f(-v) : '-'+s+'*'+f(v);
+      return 'a=(y,d=mag(k=('+f(P.A)+'+cos(i/'+f(P.B)+'-t*'+f(P.C)+'))*cos(i/'+f(P.D)+'),'+
+        'e=y/'+f(P.E)+neg(P.F)+')+sin(e/'+f(P.G)+'+t/'+f(P.H)+')'+neg(P.I)+')=>'+
+        'point((q='+f(P.J)+'*sin(k*'+f(P.K)+')-y/'+f(P.L)+'*k*('+f(P.M)+
+        '+k*sin(cos(e)*'+f(P.N)+mul('d',P.O)+'+t)))+'+f(P.P)+'*cos(c=d-t)+200,q*sin(c)+d*'+f(P.Q)+')\n'+
+        't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
+        'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
+    }
+  };
+
+  // ①b  渦（新しいつぶやきProcessing）
+  const SWIRL_CFG = {
+    id:'swirl', label:'渦', fitDefault:false,
+    blurb:'新しいつぶやきProcessing。d の3乗と分岐した縦の式で、回りながら伸びる渦になる。原典は 400px 窓の見え方（自動補正オフ）。',
+    note:'CB が回る速さ、YG・YF が縦のうねり。YH は「近い点/遠い点」で式を切り替える境目。はみ出しは原典どおり画面外へ。',
+    SPEC:[
+      { g:'骨格', expr:'k = <b>KA</b>·cos(i/<b>KB</b>)', note:'基本の波。KB が波の本数。',
+        ks:[ ['KA',5,0,15,.1],['KB',56,5,150,.5] ] },
+      { g:'軸', expr:'e = y/<b>ED</b> − <b>EF</b> ; d = mag(k, e)/<b>DD</b>', note:'d が全体の大きさと位相を決める骨。',
+        ks:[ ['ED',3,.5,12,.1],['EF',16,-40,40,.5],['DD',3,.5,12,.1] ] },
+      { g:'回転', expr:'c = d/<b>CA</b> − t/<b>CB</b>', note:'回り方。CB が回転の速さと向き。',
+        ks:[ ['CA',2,.2,8,.05],['CB',3,-8,8,.1] ] },
+      { g:'横', expr:'x = (d·<b>XA</b> + <b>XB</b> + k²)·sin(c)', note:'横の広がり。',
+        ks:[ ['XA',19,-40,60,.5],['XB',29,-40,80,.5] ] },
+      { g:'縦', expr:'y = <b>YA</b>sin(c/<b>YB</b>) + <b>YC</b>sin(k·<b>YD</b>) + d³/3·sin(t·<b>YF</b> − d²/<b>YG</b>) + y/(y<<b>YH</b>?7:<b>YJ</b>sin(e/2))·k·e',
+        note:'縦の形。ここが複雑で表情を作る。YH で近い点と遠い点を別扱い。',
+        ks:[ ['YA',66,0,150,1],['YB',3,.5,10,.1],['YC',4,0,30,.1],['YD',2,0,10,.05],['YF',3,-6,6,.05],['YG',4,.5,20,.1],['YH',9,0,40,.5],['YJ',203,10,400,1] ] },
+      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)', note:'点の数と詰まり方。',
+        ks:[ ['R',253,50,600,1],['CNT',10000,1000,20000,500] ] }
+    ],
+    compute(i, tt, p, out){
+      const y = i/p.R;
+      const k = p.KA*Math.cos(i/p.KB);
+      const e = y/p.ED - p.EF;
+      const d = Math.hypot(k, e)/p.DD;
+      const c = d/p.CA - tt/p.CB;
+      const denom = y < p.YH ? 7 : p.YJ*Math.sin(e/2);
+      out[0] = (d*p.XA + p.XB + k*k)*Math.sin(c) + 200;
+      out[1] = p.YA*Math.sin(c/p.YB) + p.YC*Math.sin(k*p.YD) + Math.pow(d,3)/3*Math.sin(tt*p.YF - d*d/p.YG) + y/denom*k*e + 200;
+    },
+    code(P){
+      const f = v => (Math.round(v*100)/100).toString();
+      const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
+      const plus = v => v<0 ? '-'+f(-v) : '+'+f(v);
+      return 'a=(y,d=mag(k='+f(P.KA)+'*cos(i/'+f(P.KB)+'),e=y/'+f(P.ED)+neg(P.EF)+')/'+f(P.DD)+')=>'+
+        'point((d*'+f(P.XA)+plus(P.XB)+'+k*k)*sin(c=d/'+f(P.CA)+'-t/'+f(P.CB)+')+200,'+
+        f(P.YA)+'*sin(c/'+f(P.YB)+')+'+f(P.YC)+'*sin(k*'+f(P.YD)+')+d**3/3*sin(t*'+f(P.YF)+'-d*d/'+f(P.YG)+')+'+
+        'y/(y<'+f(P.YH)+'?7:'+f(P.YJ)+'*sin(e/2))*k*e+200)\n'+
+        't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
+        'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
+    }
+  };
 
   // ════════════════════════════════════════════════════════
   //  ②  GLSL / つぶやきGLSL ── レイマーチ・フラクタル
@@ -302,6 +355,7 @@
 
     return {
       id:'glsl', label:'フラクタル', kind:'glsl', SPEC, ORIG, P, history,
+      langShort:'GLSL', codeLang:'GLSL / twigl', pasteTarget:'twigl の geekest モード',
       get P(){ return P; }, set P(v){ P = v; },
       blurb:'つぶやきGLSL。霧の中を歩いて（レイマーチ）万華鏡の折り（abs）で作った模様の縁を発光で描く。',
       note:'FS・FOLD・J が形を、GLOW・SHARP が明るさを決める。足し算で描くので暗転／白飛びしやすい。',
@@ -399,6 +453,7 @@
     }
     return {
       id:'swarm', label:'友と敵のダンス', kind:'swarm', SPEC, ORIG, P, history,
+      langShort:'Wolfram', codeLang:'Wolfram', pasteTarget:'Mathematica / Wolfram 言語',
       get P(){ return P; }, set P(v){ P = v; },
       blurb:'Wolfram の名作 (Simon Woods)。各点が友へ寄り敵から逃げるだけで、渦巻く群れになる。',
       note:'PS（友への歩幅）と QS（敵からの歩幅）の差が渦の締まりを決める。C を 1 に近づけると広がる。',
@@ -449,7 +504,7 @@
   // ════════════════════════════════════════════════════════
   //  シェル（タブ・つまみ・ループ）
   // ════════════════════════════════════════════════════════
-  const ENGINES = [FeatherEngine(), GlslEngine(), SwarmEngine()];
+  const ENGINES = [makeP5Engine(FEATHER_CFG), makeP5Engine(SWIRL_CFG), GlslEngine(), SwarmEngine()];
   const tabsEl = document.getElementById('tabs'), consoleEl = document.getElementById('console');
   const optsEl = document.getElementById('opts'), blurbEl = document.getElementById('blurb');
   const notesEl = document.getElementById('notes'), ta = document.getElementById('code');
@@ -498,16 +553,15 @@
     buildConsole(); applyP();
     notesEl.innerHTML = '<li>'+cur.note+'</li>'+
       '<li>黒い縦線が原典の値。<b>「少しゆらす」→「大きく振る」</b>の順で崩れ方の癖を掴むのが探しやすい。</li>'+
-      '<li>下のコードは今の数字で書き直したもの。'+(cur.id==='p5'?'p5.js（OpenProcessing / twigl classic）':cur.id==='glsl'?'twigl の geekest モード':'Mathematica / Wolfram 言語')+'にそのまま貼れる。</li>';
-    document.getElementById('codetitle').textContent = '今の数字で書き直したコード（'+
-      (cur.id==='p5'?'p5.js':cur.id==='glsl'?'GLSL / twigl':'Wolfram')+'）';
+      '<li>下のコードは今の数字で書き直したもの。'+cur.pasteTarget+'にそのまま貼れる。</li>';
+    document.getElementById('codetitle').textContent = '今の数字で書き直したコード（'+cur.codeLang+'）';
     [...tabsEl.children].forEach(b => b.classList.toggle('active', b.dataset.id === cur.id));
     cur.resize();
   }
 
   ENGINES.forEach(e => {
     const b = document.createElement('button'); b.dataset.id = e.id;
-    b.innerHTML = '<span class="k">'+(e.id==='p5'?'Processing':e.id==='glsl'?'GLSL':'Wolfram')+'</span>'+e.label;
+    b.innerHTML = '<span class="k">'+e.langShort+'</span>'+e.label;
     b.onclick = () => activate(e); tabsEl.appendChild(b);
   });
 
