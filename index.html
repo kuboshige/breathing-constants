@@ -94,7 +94,7 @@
 <header>
   <div class="eyebrow">つぶやき / 係数実験台 · 総合版</div>
   <h1>ネタを<em>選んで</em>、直書きの定数をいじり倒す</h1>
-  <p class="sub">3つの生成コードを1画面に。上のタブで切り替え、黒い縦線が原典の値。</p>
+  <p class="sub">いろんな生成コードを1画面に。上のタブで切り替え、黒い縦線が原典の値。</p>
 </header>
 
 <div class="tabs" id="tabs"></div>
@@ -204,7 +204,7 @@
       reset(){ P = { ...ORIG }; warmed = false; },
       resetP(v){ P = v; warmed = false; },
       frame(running){
-        if (running && !(freezeBox && freezeBox.checked)) { t += Math.PI/80; if (t > 40*Math.PI) t -= 40*Math.PI; }
+        if (running && !(freezeBox && freezeBox.checked)) { t += (cfg.tStep || Math.PI/80); if (t > 40*Math.PI) t -= 40*Math.PI; }
         const n = Math.round(P.CNT), b = fill(t), fit = fitBox && fitBox.checked;
         let s=1, ox=0, oy=0;
         if (fit && b.maxx > b.minx){
@@ -340,6 +340,41 @@
       'point(({XB}+k*k)*cos(c=d/{CA}-t/{CB}+i%3*{CM})+200,' +
       '{YA}*sin(c/{YB})+200+d*d*sin(t*{YF}-d)+{YC}*sin(k*{YD})+y/{YL}*k*(e+sin(e*{YM}-d*{YN})))\n' +
       't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);for(t+=PI/60,i={CNT};i--;)a(i/{R})}'
+  };
+
+  // ①d  花火（16個の火花に割れるつぶやきProcessing）
+  const ORBIT_CFG = {
+    id:'spark', label:'花火', fitDefault:false, tStep:Math.PI/20,
+    blurb:'新しいつぶやきProcessing。i%16 で16個の小さな火花に分かれ、d^sin(…) の可変べき乗で散る。',
+    note:'MOD が火花の数、DB/DS が広がり、CB が回転。p=d^sin(…) が奥行きのある散り方を作る。',
+    SPEC:[
+      { g:'骨格 k', expr:'k = <b>KA</b>·cos(i·<b>KF</b>)·sin(i)', note:'点をばらまく主波。',
+        ks:[ ['KA',9,0,20,.1],['KF',5,0,12,.05] ] },
+      { g:'副軸 e', expr:'e = cos(i·<b>EF1</b>)·cos(i·<b>EF2</b>)·<b>EA</b>', note:'もう一方の散らばり。',
+        ks:[ ['EF1',3,0,10,.05],['EF2',2,0,10,.05],['EA',9,0,20,.1] ] },
+      { g:'半径 d', expr:'d = mag(k,e)^<b>DP</b>/<b>DD</b> + <b>DB</b> − sin(t/<b>DT</b>+m)³/<b>DS</b>', note:'各点の半径。DB が下駄、最後の項が脈動。',
+        ks:[ ['DP',3,1,5,.1],['DD',1999,200,5000,1],['DB',1.5,-3,5,.1],['DT',2,.5,8,.1],['DS',3,.5,12,.1] ] },
+      { g:'回転 c', expr:'c = d/<b>CA</b> − t/<b>CB</b> + m', note:'回り方。m は層ごとの位相。',
+        ks:[ ['CA',16,1,60,.5],['CB',48,-120,120,1] ] },
+      { g:'投影', expr:'x = <b>XA</b>sin(c) + k·p ; y = <b>YA</b>sin(c·<b>YB</b>) + e·p ; p = d^sin(d²−t+m)', note:'p が奥行き。',
+        ks:[ ['XA',99,0,200,1],['YA',99,0,200,1],['YB',4,0,12,.05] ] },
+      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i%<b>MOD</b>·<b>MM</b>)', note:'MOD が層の数、MM が層の間隔。',
+        ks:[ ['MOD',16,2,40,1],['MM',13,1,40,.5],['CNT',10000,1000,30000,500] ] }
+    ],
+    compute(i, tt, p, out){
+      const m = (i % Math.round(p.MOD)) * p.MM;
+      const k = p.KA*Math.cos(i*p.KF)*Math.sin(i);
+      const e = Math.cos(i*p.EF1)*Math.cos(i*p.EF2)*p.EA;
+      const d = Math.pow(Math.hypot(k, e), p.DP)/p.DD + p.DB - Math.pow(Math.sin(tt/p.DT + m), 3)/p.DS;
+      const c = d/p.CA - tt/p.CB + m;
+      const pw = Math.pow(d, Math.sin(d*d - tt + m));
+      out[0] = p.XA*Math.sin(c) + k*pw + 200;
+      out[1] = p.YA*Math.sin(c*p.YB) + e*pw + 200;
+    },
+    template:
+      'a=(m,d=mag(k={KA}*cos(i*{KF})*sin(i),e=cos(i*{EF1})*cos(i*{EF2})*{EA})**{DP}/{DD}+{DB}-sin(t/{DT}+m)**3/{DS})=>' +
+      'point({XA}*sin(c=d/{CA}-t/{CB}+m)+k*(p=d**sin(d*d-t+m))+200,{YA}*sin(c*{YB})+e*p+200)\n' +
+      't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);for(t+=PI/20,i={CNT};i--;)a(i%{MOD}*{MM})}'
   };
 
   // ════════════════════════════════════════════════════════
@@ -546,7 +581,7 @@
   // ════════════════════════════════════════════════════════
   //  シェル（タブ・つまみ・ループ）
   // ════════════════════════════════════════════════════════
-  const ENGINES = [makeP5Engine(FEATHER_CFG), makeP5Engine(SWIRL_CFG), makeP5Engine(WEAVE_CFG), GlslEngine(), SwarmEngine()];
+  const ENGINES = [makeP5Engine(FEATHER_CFG), makeP5Engine(SWIRL_CFG), makeP5Engine(WEAVE_CFG), makeP5Engine(ORBIT_CFG), GlslEngine(), SwarmEngine()];
   const tabsEl = document.getElementById('tabs'), consoleEl = document.getElementById('console');
   const optsEl = document.getElementById('opts'), blurbEl = document.getElementById('blurb');
   const notesEl = document.getElementById('notes'), ta = document.getElementById('code');
