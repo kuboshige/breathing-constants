@@ -144,6 +144,16 @@
   const fallback = document.getElementById('fallback');
 
   const disp = v => Math.abs(v) >= 1e4 ? (+v).toExponential(1).replace('+','') : String(Math.round(v*1000)/1000);
+
+  // ── コード出力ヘルパ：元の1行に {ID} を埋めた template から復元する ──
+  //   ・{ID}                → その値をそのまま（除算・乗算の後ろなど）
+  //   ・+{ID} / -{ID}       → 加減算スロット。値の符号に応じて + / - を正しく付け直す
+  //   これで新しいネタは compute と template を書くだけで済む（符号処理を手書きしない）
+  const numFmt = v => String(Math.round(v*100)/100);
+  const mergeSign = (op, v) => { const neg = (op === '-') !== (v < 0); return (neg?'-':'+') + numFmt(Math.abs(v)); };
+  const fillTemplate = (tpl, P) => tpl
+    .replace(/([+\-])\{([A-Za-z]\w*)\}/g, (m, op, id) => mergeSign(op, P[id]))
+    .replace(/\{([A-Za-z]\w*)\}/g, (m, id) => numFmt(P[id]));
   function jitterKnob(P, [id, def, lo, hi, st], amt){
     const span = (hi - lo) * amt * (Math.random()*.6 + .2) * (Math.random() < .5 ? -1 : 1);
     P[id] = Math.min(hi, Math.max(lo, Math.round((P[id] + span)/st)*st));
@@ -210,9 +220,18 @@
         warn.classList.toggle('on', b.bad > n*0.02);
         corner.textContent = n.toLocaleString() + ' pts' + (fit ? '  ×'+view.s.toFixed(2) : '');
       },
-      code(){ return cfg.code(P); }
+      code(){ return fillTemplate(cfg.template, P); }
     };
   }
+
+  // ────────────────────────────────────────────────────────
+  //  新しい p5 つぶやきProcessing を足す手順（3点セット）:
+  //   1) SPEC     … つまみ定義。グループごとに { g, expr, note, ks:[[id,def,lo,hi,step],…] }
+  //   2) compute  … (i, t, P, out) を受け out[0]=x, out[1]=y に書く（元の式そのまま）
+  //   3) template … 元の1行。定数を {ID} に置換。加減算の定数は +{ID} / -{ID} と書く
+  //   あとは下の ENGINES 配列に makeP5Engine(◯◯_CFG) を足すだけ。
+  //   （※ 座標が 400px 窓前提のネタは fitDefault:false）
+  // ────────────────────────────────────────────────────────
 
   // ①  羽根（最初のつぶやきProcessing）
   const FEATHER_CFG = {
@@ -244,17 +263,10 @@
       const c = d - tt;
       out[0] = q + p.P*Math.cos(c); out[1] = q*Math.sin(c) + p.Q*d;
     },
-    code(P){
-      const f = v => (Math.round(v*100)/100).toString();
-      const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
-      const mul = (s,v) => v<0 ? '+'+s+'*'+f(-v) : '-'+s+'*'+f(v);
-      return 'a=(y,d=mag(k=('+f(P.A)+'+cos(i/'+f(P.B)+'-t*'+f(P.C)+'))*cos(i/'+f(P.D)+'),'+
-        'e=y/'+f(P.E)+neg(P.F)+')+sin(e/'+f(P.G)+'+t/'+f(P.H)+')'+neg(P.I)+')=>'+
-        'point((q='+f(P.J)+'*sin(k*'+f(P.K)+')-y/'+f(P.L)+'*k*('+f(P.M)+
-        '+k*sin(cos(e)*'+f(P.N)+mul('d',P.O)+'+t)))+'+f(P.P)+'*cos(c=d-t)+200,q*sin(c)+d*'+f(P.Q)+')\n'+
-        't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
-        'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
-    }
+    template:
+      'a=(y,d=mag(k=({A}+cos(i/{B}-t*{C}))*cos(i/{D}),e=y/{E}-{F})+sin(e/{G}+t/{H})-{I})=>' +
+      'point((q={J}*sin(k*{K})-y/{L}*k*({M}+k*sin(cos(e)*{N}-d*{O}+t)))+{P}*cos(c=d-t)+200,q*sin(c)+d*{Q})\n' +
+      't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);for(t+=PI/80,i={CNT};i--;)a(i/{R})}'
   };
 
   // ①b  渦（新しいつぶやきProcessing）
@@ -287,17 +299,47 @@
       out[0] = (d*p.XA + p.XB + k*k)*Math.sin(c) + 200;
       out[1] = p.YA*Math.sin(c/p.YB) + p.YC*Math.sin(k*p.YD) + Math.pow(d,3)/3*Math.sin(tt*p.YF - d*d/p.YG) + y/denom*k*e + 200;
     },
-    code(P){
-      const f = v => (Math.round(v*100)/100).toString();
-      const neg = v => v<0 ? '+'+f(-v) : '-'+f(v);
-      const plus = v => v<0 ? '-'+f(-v) : '+'+f(v);
-      return 'a=(y,d=mag(k='+f(P.KA)+'*cos(i/'+f(P.KB)+'),e=y/'+f(P.ED)+neg(P.EF)+')/'+f(P.DD)+')=>'+
-        'point((d*'+f(P.XA)+plus(P.XB)+'+k*k)*sin(c=d/'+f(P.CA)+'-t/'+f(P.CB)+')+200,'+
-        f(P.YA)+'*sin(c/'+f(P.YB)+')+'+f(P.YC)+'*sin(k*'+f(P.YD)+')+d**3/3*sin(t*'+f(P.YF)+'-d*d/'+f(P.YG)+')+'+
-        'y/(y<'+f(P.YH)+'?7:'+f(P.YJ)+'*sin(e/2))*k*e+200)\n'+
-        't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);'+
-        'for(t+=PI/80,i='+Math.round(P.CNT)+';i--;)a(i/'+f(P.R)+')}';
-    }
+    template:
+      'a=(y,d=mag(k={KA}*cos(i/{KB}),e=y/{ED}-{EF})/{DD})=>' +
+      'point((d*{XA}+{XB}+k*k)*sin(c=d/{CA}-t/{CB})+200,' +
+      '{YA}*sin(c/{YB})+{YC}*sin(k*{YD})+d**3/3*sin(t*{YF}-d*d/{YG})+y/(y<{YH}?7:{YJ}*sin(e/2))*k*e+200)\n' +
+      't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);for(t+=PI/80,i={CNT};i--;)a(i/{R})}'
+  };
+
+  // ①c  重ね（3層に割れるつぶやきProcessing）
+  const WEAVE_CFG = {
+    id:'weave', label:'三重', fitDefault:false,
+    blurb:'新しいつぶやきProcessing。i%3 で3層に割れ、cos(y·31+t) の波で縁がゆらぐ。原典は 400px 窓の見え方。',
+    note:'KW が縁のさざなみ、CM が3層のずれ角、DO が輪のくり抜き。x が cos 投影なので横に開く。',
+    SPEC:[
+      { g:'骨格', expr:'k = (<b>KA</b> + cos(y·<b>KW</b> + t)) × cos(i/<b>KB</b>)', note:'動く波 KW と、包む波 KB。',
+        ks:[ ['KA',4,0,12,.1],['KW',31,0,80,.5],['KB',99,5,200,.5] ] },
+      { g:'軸', expr:'e = y/<b>ED</b> − <b>EF</b> ; d = mag(k, e) − <b>DO</b>', note:'DO が輪の中心をくり抜く量。',
+        ks:[ ['ED',5,.5,20,.1],['EF',11,-40,40,.5],['DO',6,-20,20,.1] ] },
+      { g:'回転', expr:'c = d/<b>CA</b> − t/<b>CB</b> + (i%3)·<b>CM</b>', note:'CM が3層のずれ角、CB が回る速さ。',
+        ks:[ ['CA',2,.2,8,.05],['CB',2,-8,8,.1],['CM',8,0,20,.1] ] },
+      { g:'横', expr:'x = (<b>XB</b> + k²)·cos(c)', note:'横の半径。',
+        ks:[ ['XB',79,0,200,1] ] },
+      { g:'縦', expr:'y = <b>YA</b>sin(c/<b>YB</b>) + d²sin(t·<b>YF</b> − d) + <b>YC</b>sin(k·<b>YD</b>) + y/<b>YL</b>·k·(e + sin(e·<b>YM</b> − d·<b>YN</b>))',
+        note:'d² 項が縦の伸び、最後の項が細かな毛羽立ち。',
+        ks:[ ['YA',99,0,200,1],['YB',3,.5,10,.1],['YF',3,-6,6,.05],['YC',3,0,30,.1],['YD',2,0,10,.05],['YL',13,1,60,.5],['YM',4,0,12,.05],['YN',4,0,12,.05] ] },
+      { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)', note:'点の数と詰まり方。',
+        ks:[ ['R',995,100,2000,5],['CNT',20000,2000,40000,500] ] }
+    ],
+    compute(i, tt, p, out){
+      const y = i/p.R;
+      const k = (p.KA + Math.cos(y*p.KW + tt)) * Math.cos(i/p.KB);
+      const e = y/p.ED - p.EF;
+      const d = Math.hypot(k, e) - p.DO;
+      const c = d/p.CA - tt/p.CB + (i%3)*p.CM;
+      out[0] = (p.XB + k*k)*Math.cos(c) + 200;
+      out[1] = p.YA*Math.sin(c/p.YB) + 200 + d*d*Math.sin(tt*p.YF - d) + p.YC*Math.sin(k*p.YD) + y/p.YL*k*(e + Math.sin(e*p.YM - d*p.YN));
+    },
+    template:
+      'a=(y,d=mag(k=({KA}+cos(y*{KW}+t))*cos(i/{KB}),e=y/{ED}-{EF})-{DO})=>' +
+      'point(({XB}+k*k)*cos(c=d/{CA}-t/{CB}+i%3*{CM})+200,' +
+      '{YA}*sin(c/{YB})+200+d*d*sin(t*{YF}-d)+{YC}*sin(k*{YD})+y/{YL}*k*(e+sin(e*{YM}-d*{YN})))\n' +
+      't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);for(t+=PI/60,i={CNT};i--;)a(i/{R})}'
   };
 
   // ════════════════════════════════════════════════════════
@@ -504,7 +546,7 @@
   // ════════════════════════════════════════════════════════
   //  シェル（タブ・つまみ・ループ）
   // ════════════════════════════════════════════════════════
-  const ENGINES = [makeP5Engine(FEATHER_CFG), makeP5Engine(SWIRL_CFG), GlslEngine(), SwarmEngine()];
+  const ENGINES = [makeP5Engine(FEATHER_CFG), makeP5Engine(SWIRL_CFG), makeP5Engine(WEAVE_CFG), GlslEngine(), SwarmEngine()];
   const tabsEl = document.getElementById('tabs'), consoleEl = document.getElementById('console');
   const optsEl = document.getElementById('opts'), blurbEl = document.getElementById('blurb');
   const notesEl = document.getElementById('notes'), ta = document.getElementById('code');
