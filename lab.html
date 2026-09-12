@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>係数をいじる ── つぶやきProcessing 実験台</title>
+<style>
+  :root{
+    --paper:#E7EAE4; --paper-2:#DDE1DA; --ink:#171C22; --ink-mute:#5C6670;
+    --rule:#C3CAC0; --signal:#FF2D6F; --trace:#00A6BC; --void:#090909;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Space Grotesk","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+    --body:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    background-image:linear-gradient(var(--paper-2) 1px,transparent 1px),linear-gradient(90deg,var(--paper-2) 1px,transparent 1px);
+    background-size:24px 24px;
+    color:var(--ink);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px;margin:0 auto;padding:20px 16px 56px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:20px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute)}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(21px,4.2vw,32px);line-height:1.2;margin:6px 0 6px}
+  h1 em{font-style:normal;color:var(--signal)}
+  .sub{font-size:13px;color:var(--ink-mute);margin:0}
+
+  .grid{display:grid;gap:22px;grid-template-columns:1fr}
+  @media(min-width:920px){.grid{grid-template-columns:minmax(0,430px) minmax(0,1fr);align-items:start}}
+
+  .scope{position:sticky;top:16px}
+  @media(max-width:919px){.scope{position:static}}
+  .screen{position:relative;background:var(--void);border:2px solid var(--ink);aspect-ratio:1/1;width:100%}
+  .screen canvas{display:block;width:100%;height:100%}
+  .corner{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:10px;color:#7a7a7a;letter-spacing:.1em}
+  .warn{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:10px;color:var(--signal);display:none}
+  .warn.on{display:block}
+
+  .bar{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+  button{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:.05em;background:var(--ink);color:var(--paper);border:0;padding:8px 12px;cursor:pointer}
+  button:hover{background:var(--signal)}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+  button.ghost:hover{background:var(--ink);color:var(--paper)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .opts{margin-top:10px;display:flex;flex-wrap:wrap;gap:10px 16px;font-family:var(--mono);font-size:11px}
+  .opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
+
+  .shots{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px}
+  .shots canvas{width:100%;aspect-ratio:1/1;background:#000;border:1px solid var(--rule);cursor:pointer;display:block}
+  .shots canvas:hover{border-color:var(--signal)}
+  .shots-empty{font-family:var(--mono);font-size:10.5px;color:var(--ink-mute);grid-column:1/-1}
+
+  .group{border:1px solid var(--rule);background:rgba(255,255,255,.55);margin-bottom:14px}
+  .ghead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--paper-2)}
+  .gname{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.04em}
+  .gexpr{font-family:var(--mono);font-size:11px;color:var(--ink-mute);word-break:break-word;padding:8px 12px 2px}
+  .gexpr b{color:var(--signal);font-weight:700}
+  .gnote{font-size:11.5px;color:var(--ink-mute);padding:0 12px 8px}
+  .gbtn{font-size:10.5px;padding:5px 9px}
+  .knobs{padding:2px 12px 12px}
+  .knob{display:grid;grid-template-columns:2.6em 1fr 4.4em;align-items:center;gap:9px;padding:3px 0}
+  .knob .id{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--signal)}
+  .knob .now{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+  .knob .now.moved{color:var(--signal);font-weight:700}
+  .track{position:relative;display:flex;align-items:center;min-width:0}
+  .track input{width:100%;margin:0;accent-color:var(--signal)}
+  .track .orig{position:absolute;top:50%;transform:translate(-50%,-50%);width:1px;height:15px;background:var(--ink);opacity:.45;pointer-events:none}
+
+  .codebox{margin-top:24px;border:2px solid var(--ink)}
+  .codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--ink);color:var(--paper);padding:8px 12px}
+  .codehead h2{font-family:var(--disp);font-size:13px;letter-spacing:.05em;margin:0}
+  textarea{width:100%;border:0;resize:vertical;min-height:120px;font-family:var(--mono);font-size:11px;line-height:1.7;padding:12px;background:#fff;color:var(--ink);display:block}
+  footer{margin-top:28px;border-top:2px solid var(--ink);padding-top:12px;font-size:12.5px;color:var(--ink-mute)}
+  footer ul{margin:0;padding-left:1.2em} footer li{margin-bottom:4px}
+  code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">つぶやきProcessing / 係数実験台</div>
+  <h1>数字を<em>1つ</em>動かすと、形はどこまで壊れるか</h1>
+  <p class="sub">元コードに直書きされた 4, 9, 35, 40… を全部つまみにしたもの。黒い縦線が元の値の位置。</p>
+</header>
+
+<div class="grid">
+  <section class="scope">
+    <div class="screen">
+      <canvas id="cv" width="400" height="400" aria-label="係数を変えた生成アートの描画"></canvas>
+      <div class="corner" id="corner">400 × 400</div>
+      <div class="warn" id="warn">値が発散しています</div>
+    </div>
+
+    <div class="bar">
+      <button id="play">一時停止</button>
+      <button class="ghost" id="undo">1つ戻す</button>
+      <button class="ghost" id="reset">原典に戻す</button>
+      <button class="ghost" id="nudge">全体を少しゆらす</button>
+      <button class="ghost" id="wild">大きく振る</button>
+      <button class="ghost" id="save">この形を保存</button>
+    </div>
+
+    <div class="opts">
+      <label><input type="checkbox" id="fit" checked>はみ出しを自動補正</label>
+      <label><input type="checkbox" id="freeze">t を止める</label>
+    </div>
+
+    <div class="shots" id="shots"><div class="shots-empty">保存した形がここに並びます（クリックで復元）</div></div>
+  </section>
+
+  <section id="console"></section>
+</div>
+
+<div class="codebox">
+  <div class="codehead">
+    <h2>今の数字で書き直したコード</h2>
+    <button class="gbtn" id="copy">コピー</button>
+  </div>
+  <textarea id="code" readonly spellcheck="false"></textarea>
+</div>
+
+<footer>
+  <ul>
+    <li>つまみを動かすと即座に描き直します。効きが強いのは <code>D</code>（羽根の本数）、<code>R</code>（点の詰まり方）、<code>Q</code>（縦の伸び）あたり。</li>
+    <li>「大きく振る」はほぼ確実に元の形を壊します。まず「少しゆらす」を何度か押して、崩れ方の癖を見るのが探しやすいです。</li>
+    <li>自動補正は描画範囲を画面に収めるだけで、式そのものは変えていません。出力コードは補正なしの生の式です。</li>
+    <li>出力コードはそのまま <a href="https://openprocessing.org" target="_blank" rel="noopener">OpenProcessing</a> などの p5.js 環境に貼れます。</li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  const TAU = Math.PI * 2, STEP = Math.PI / 80;
+
+  // ── 元コードの直書き定数 ──────────────────────────────
+  const SPEC = [
+    { g:'骨格', expr:'k = (<b>A</b> + cos(i/<b>B</b> − <b>C</b>t)) × cos(i/<b>D</b>)',
+      note:'羽根の刻みと本数。B が速い波、D がそれを包む遅い波。',
+      ks:[ ['A',4,0,10,.1,'波の下駄。0に近いと羽根が消える'],
+           ['B',9,1,40,.1,'刻みの細かさ'],
+           ['C',2,-4,4,.05,'刻みが流れる速さと向き'],
+           ['D',35,5,120,.5,'羽根のかたまりの大きさ'] ] },
+    { g:'軸', expr:'e = y/<b>E</b> − <b>F</b>',
+      note:'t を含まない静的な軸。全体の位置と縦の広がりの下地。',
+      ks:[ ['E',7,1,30,.1,'縦の伸び縮み'],
+           ['F',13,-30,30,.5,'原点のずらし'] ] },
+    { g:'うねり', expr:'d = mag(k, e) + sin(e/<b>G</b> + t/<b>H</b>) − <b>I</b>',
+      note:'d は縦位置と回転位相を兼ねる。ここが形の骨。',
+      ks:[ ['G',9,1,40,.1,'うねりの波長'],
+           ['H',2,-4,4,.05,'うねりの周期（小さいほど速い）'],
+           ['I',4,-10,10,.1,'全体の底上げ'] ] },
+    { g:'張り出し', expr:'q = <b>J</b>sin(<b>K</b>k) − (y/<b>L</b>)·k·(<b>M</b> + k·sin(<b>N</b>cos(e) − <b>O</b>d + t))',
+      note:'中心からどれだけ横に伸びるか。M が基本の太さ。',
+      ks:[ ['J',2,-10,10,.1,'細かい振動の量'],
+           ['K',3,0,10,.05,'その振動の細かさ'],
+           ['L',35,5,120,.5,'先端ほど張り出す度合い'],
+           ['M',9,0,20,.1,'基本の太さ'],
+           ['N',9,0,20,.1,'ねじれの空間周波数'],
+           ['O',2,-6,6,.05,'ねじれの高さ依存'] ] },
+    { g:'投影', expr:'x = q + <b>P</b>cos(c) + 200 &nbsp;/&nbsp; y = q·sin(c) + <b>Q</b>d',
+      note:'できた値を画面に置く段。c = d − t。',
+      ks:[ ['P',40,0,150,1,'横の回転半径'],
+           ['Q',35,5,80,.5,'縦の倍率'] ] },
+    { g:'走査', expr:'for(i = <b>CNT</b>; i−−;) a(i / <b>R</b>)',
+      note:'何点打つか、i をどのスケールで渡すか。',
+      ks:[ ['R',235,50,600,1,'点の詰まり方'],
+           ['CNT',10000,1000,20000,500,'点の数'] ] }
+  ];
+
+  const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
+  let P = { ...ORIG };
+  const history = [];
+
+  // ── 計算（元コードと同じ構造） ───────────────────────
+  function compute(i, t, p, out) {
+    const y = i / p.R;
+    const k = (p.A + Math.cos(i / p.B - t * p.C)) * Math.cos(i / p.D);
+    const e = y / p.E - p.F;
+    const d = Math.hypot(k, e) + Math.sin(e / p.G + t / p.H) - p.I;
+    const q = p.J * Math.sin(k * p.K) - y / p.L * k * (p.M + k * Math.sin(Math.cos(e) * p.N - d * p.O + t));
+    const c = d - t;
+    out[0] = q + p.P * Math.cos(c) + 200;
+    out[1] = q * Math.sin(c) + p.Q * d;
+  }
+
+  // ── 描画 ────────────────────────────────────────────
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const warn = document.getElementById('warn'), corner = document.getElementById('corner');
+  const fitBox = document.getElementById('fit'), freeze = document.getElementById('freeze');
+  let t = 0, running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let buf = new Float32Array(40000), view = { s:1, ox:0, oy:0 }, warmed = false;
+
+  function resize(){ const r = Math.min(devicePixelRatio || 1, 2);
+    cv.width = 400*r; cv.height = 400*r; ctx.setTransform(r,0,0,r,0,0); }
+  resize(); addEventListener('resize', resize);
+
+  function fill(p, tt, arr) {
+    const n = Math.round(p.CNT), o = [0,0];
+    let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,bad=0;
+    for (let i = n - 1, j = 0; i >= 0; i--, j += 2) {
+      compute(i, tt, p, o);
+      const x = o[0], y = o[1];
+      if (!isFinite(x) || !isFinite(y) || Math.abs(x) > 1e6 || Math.abs(y) > 1e6) { bad++; arr[j]=NaN; continue; }
+      arr[j] = x; arr[j+1] = y;
+      if (x<minx)minx=x; if (x>maxx)maxx=x; if (y<miny)miny=y; if (y>maxy)maxy=y;
+    }
+    return { n, bad, minx, maxx, miny, maxy };
+  }
+
+  function render() {
+    const n = Math.round(P.CNT);
+    if (buf.length < n*2) buf = new Float32Array(n*2);
+    const b = fill(P, t, buf);
+
+    let s = 1, ox = 0, oy = 0;
+    if (fitBox.checked && b.maxx > b.minx) {
+      const w = Math.max(b.maxx-b.minx, b.maxy-b.miny, 1e-6);
+      const target = Math.min(380 / w, 6);
+      const k = warmed ? .12 : 1;
+      view.s += (target - view.s) * k;
+      view.ox += ((b.minx+b.maxx)/2 - view.ox) * k;
+      view.oy += ((b.miny+b.maxy)/2 - view.oy) * k;
+      warmed = true;
+      s = view.s; ox = view.ox; oy = view.oy;
+    } else { view.s = 1; warmed = false; }
+
+    ctx.fillStyle = 'rgb(9,9,9)'; ctx.fillRect(0,0,400,400);
+    ctx.fillStyle = 'rgba(255,255,255,0.376)';
+    if (fitBox.checked) {
+      for (let j = 0; j < n*2; j += 2) {
+        const x = buf[j]; if (x !== x) continue;
+        ctx.fillRect((x-ox)*s+200, (buf[j+1]-oy)*s+200, 1, 1);
+      }
+    } else {
+      for (let j = 0; j < n*2; j += 2) {
+        const x = buf[j]; if (x !== x) continue;
+        ctx.fillRect(x, buf[j+1], 1, 1);
+      }
+    }
+    warn.classList.toggle('on', b.bad > n * 0.02);
+    corner.textContent = n.toLocaleString() + ' pts' + (fitBox.checked ? '  ×' + view.s.toFixed(2) : '');
+  }
+
+  function loop(){ if (running && !freeze.checked) { t += STEP; if (t > 40*Math.PI) t -= 40*Math.PI; } render(); requestAnimationFrame(loop); }
+
+  // ── つまみ ──────────────────────────────────────────
+  const cons = document.getElementById('console'), inputs = {}, nows = {};
+  SPEC.forEach(sec => {
+    const g = document.createElement('div'); g.className = 'group';
+    g.innerHTML = '<div class="ghead"><span class="gname">' + sec.g +
+      '</span><button class="gbtn ghost" data-g="' + sec.g + '">ここだけ振る</button></div>' +
+      '<div class="gexpr">' + sec.expr + '</div><div class="gnote">' + sec.note + '</div>';
+    const box = document.createElement('div'); box.className = 'knobs';
+    sec.ks.forEach(([id, def, lo, hi, st, tip]) => {
+      const row = document.createElement('div'); row.className = 'knob'; row.title = tip;
+      row.innerHTML = '<span class="id">' + id + '</span>' +
+        '<span class="track"><input type="range" min="' + lo + '" max="' + hi + '" step="' + st +
+        '" value="' + def + '" aria-label="' + id + ' ' + tip + '">' +
+        '<span class="orig" style="left:' + ((def-lo)/(hi-lo)*100) + '%"></span></span>' +
+        '<span class="now" id="n_' + id + '">' + def + '</span>';
+      const inp = row.querySelector('input');
+      inp.oninput = () => { push(); P[id] = +inp.value; sync(id); code(); };
+      inputs[id] = inp; nows[id] = row.querySelector('.now');
+      box.appendChild(row);
+    });
+    g.appendChild(box); cons.appendChild(g);
+    g.querySelector('[data-g]').onclick = () => { push(); sec.ks.forEach(k => jitter(k, .5)); apply(); };
+  });
+
+  const fmt = v => (Math.round(v*100)/100).toString();
+  function sync(id){ nows[id].textContent = fmt(P[id]); nows[id].classList.toggle('moved', P[id] !== ORIG[id]); }
+  function apply(){ for (const id in P) { inputs[id].value = P[id]; sync(id); } warmed = false; code(); }
+  function push(){ history.push({ ...P }); if (history.length > 40) history.shift(); }
+  function jitter([id, def, lo, hi, st], amt) {
+    const span = (hi - lo) * amt * (Math.random() * .6 + .2) * (Math.random() < .5 ? -1 : 1);
+    P[id] = Math.min(hi, Math.max(lo, Math.round((P[id] + span) / st) * st));
+  }
+
+  document.getElementById('play').onclick = e => { running = !running; e.target.textContent = running ? '一時停止' : '再生'; };
+  document.getElementById('reset').onclick = () => { push(); P = { ...ORIG }; apply(); };
+  document.getElementById('undo').onclick = () => { const h = history.pop(); if (h) { P = h; apply(); } };
+  document.getElementById('nudge').onclick = () => { push(); SPEC.forEach(s => s.ks.forEach(k => jitter(k, .06))); apply(); };
+  document.getElementById('wild').onclick  = () => { push(); SPEC.forEach(s => s.ks.forEach(k => jitter(k, .45))); apply(); };
+
+  // ── 保存 ────────────────────────────────────────────
+  const shots = document.getElementById('shots');
+  document.getElementById('save').onclick = () => {
+    const empty = shots.querySelector('.shots-empty'); if (empty) empty.remove();
+    const snap = { ...P }, c = document.createElement('canvas');
+    c.width = c.height = 128; const cx = c.getContext('2d');
+    const small = { ...snap, CNT: Math.min(snap.CNT, 6000) };
+    const tmp = new Float32Array(Math.round(small.CNT) * 2);
+    const b = fill(small, t, tmp);
+    const w = Math.max(b.maxx-b.minx, b.maxy-b.miny, 1e-6), s = 120 / w;
+    cx.fillStyle = '#090909'; cx.fillRect(0,0,128,128);
+    cx.fillStyle = 'rgba(255,255,255,0.45)';
+    for (let j = 0; j < tmp.length; j += 2) { const x = tmp[j]; if (x !== x) continue;
+      cx.fillRect((x-(b.minx+b.maxx)/2)*s+64, (tmp[j+1]-(b.miny+b.maxy)/2)*s+64, 1, 1); }
+    c.title = 'クリックで復元';
+    c.onclick = () => { push(); P = { ...snap }; apply(); };
+    shots.prepend(c);
+    while (shots.children.length > 12) shots.lastChild.remove();
+  };
+
+  // ── コード出力 ──────────────────────────────────────
+  const ta = document.getElementById('code');
+  const neg = v => v < 0 ? '+' + fmt(-v) : '-' + fmt(v);
+  const mul = (sym, v) => v < 0 ? '+' + sym + '*' + fmt(-v) : '-' + sym + '*' + fmt(v);
+  function code() {
+    ta.value =
+      'a=(y,d=mag(k=(' + fmt(P.A) + '+cos(i/' + fmt(P.B) + '-t*' + fmt(P.C) + '))*cos(i/' + fmt(P.D) + '),' +
+      'e=y/' + fmt(P.E) + neg(P.F) + ')+sin(e/' + fmt(P.G) + '+t/' + fmt(P.H) + ')' + neg(P.I) + ')=>' +
+      'point((q=' + fmt(P.J) + '*sin(k*' + fmt(P.K) + ')-y/' + fmt(P.L) + '*k*(' + fmt(P.M) +
+      '+k*sin(cos(e)*' + fmt(P.N) + mul('d', P.O) + '+t)))+' + fmt(P.P) + '*cos(c=d-t)+200,q*sin(c)+d*' + fmt(P.Q) + ')\n' +
+      't=0,draw=$=>{t||createCanvas(w=400,w);background(9).stroke(w,96);' +
+      'for(t+=PI/80,i=' + Math.round(P.CNT) + ';i--;)a(i/' + fmt(P.R) + ')}';
+  }
+  document.getElementById('copy').onclick = async e => {
+    try { await navigator.clipboard.writeText(ta.value); e.target.textContent = 'コピーした'; }
+    catch { ta.select(); e.target.textContent = '選択した'; }
+    setTimeout(() => e.target.textContent = 'コピー', 1400);
+  };
+
+  code(); loop();
+})();
+</script>
+</body>
+</html>

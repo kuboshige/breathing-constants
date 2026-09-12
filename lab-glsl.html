@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>係数をいじる ── つぶやきGLSL 実験台</title>
+<style>
+  :root{
+    --paper:#E7EAE4; --paper-2:#DDE1DA; --ink:#171C22; --ink-mute:#5C6670;
+    --rule:#C3CAC0; --signal:#FF2D6F; --trace:#00A6BC; --void:#050608;
+    --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+    --disp:"Space Grotesk","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+    --body:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--paper);
+    background-image:linear-gradient(var(--paper-2) 1px,transparent 1px),linear-gradient(90deg,var(--paper-2) 1px,transparent 1px);
+    background-size:24px 24px;
+    color:var(--ink);font-family:var(--body);line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1240px;margin:0 auto;padding:20px 16px 56px}
+  header{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:20px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute)}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(21px,4.2vw,32px);line-height:1.2;margin:6px 0 6px}
+  h1 em{font-style:normal;color:var(--signal)}
+  .sub{font-size:13px;color:var(--ink-mute);margin:0}
+
+  .grid{display:grid;gap:22px;grid-template-columns:1fr}
+  @media(min-width:920px){.grid{grid-template-columns:minmax(0,430px) minmax(0,1fr);align-items:start}}
+
+  .scope{position:sticky;top:16px}
+  @media(max-width:919px){.scope{position:static}}
+  .screen{position:relative;background:var(--void);border:2px solid var(--ink);aspect-ratio:1/1;width:100%}
+  .screen canvas{display:block;width:100%;height:100%}
+  .corner{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:10px;color:#7a7a7a;letter-spacing:.1em}
+  .fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;text-align:center;
+    padding:24px;font-family:var(--mono);font-size:12px;color:var(--signal);line-height:1.7}
+
+  .bar{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px}
+  button{font-family:var(--mono);font-size:11.5px;font-weight:700;letter-spacing:.05em;background:var(--ink);color:var(--paper);border:0;padding:8px 12px;cursor:pointer}
+  button:hover{background:var(--signal)}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule)}
+  button.ghost:hover{background:var(--ink);color:var(--paper)}
+  button.ghost.active{background:var(--ink);color:var(--paper)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .opts{margin-top:10px;display:flex;flex-wrap:wrap;gap:10px 16px;font-family:var(--mono);font-size:11px;align-items:center}
+  .opts label{display:flex;align-items:center;gap:6px;cursor:pointer}
+  .opts .sep{color:var(--rule)}
+  .opts .qlabel{color:var(--ink-mute)}
+
+  .group{border:1px solid var(--rule);background:rgba(255,255,255,.55);margin-bottom:14px}
+  .ghead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--rule);background:var(--paper-2)}
+  .gname{font-family:var(--disp);font-weight:700;font-size:13px;letter-spacing:.04em}
+  .gexpr{font-family:var(--mono);font-size:11px;color:var(--ink-mute);word-break:break-word;padding:8px 12px 2px}
+  .gexpr b{color:var(--signal);font-weight:700}
+  .gnote{font-size:11.5px;color:var(--ink-mute);padding:0 12px 8px}
+  .gbtn{font-size:10.5px;padding:5px 9px}
+  .knobs{padding:2px 12px 12px}
+  .knob{display:grid;grid-template-columns:3.4em 1fr 4.8em;align-items:center;gap:9px;padding:3px 0}
+  .knob .id{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--signal)}
+  .knob .now{font-family:var(--mono);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
+  .knob .now.moved{color:var(--signal);font-weight:700}
+  .track{position:relative;display:flex;align-items:center;min-width:0}
+  .track input{width:100%;margin:0;accent-color:var(--signal)}
+  .track .orig{position:absolute;top:50%;transform:translate(-50%,-50%);width:1px;height:15px;background:var(--ink);opacity:.45;pointer-events:none}
+
+  .codebox{margin-top:24px;border:2px solid var(--ink)}
+  .codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--ink);color:var(--paper);padding:8px 12px}
+  .codehead h2{font-family:var(--disp);font-size:13px;letter-spacing:.05em;margin:0}
+  textarea{width:100%;border:0;resize:vertical;min-height:120px;font-family:var(--mono);font-size:11px;line-height:1.7;padding:12px;background:#fff;color:var(--ink);display:block}
+  footer{margin-top:28px;border-top:2px solid var(--ink);padding-top:12px;font-size:12.5px;color:var(--ink-mute)}
+  footer ul{margin:0;padding-left:1.2em} footer li{margin-bottom:4px}
+  code{font-family:var(--mono);font-size:.92em;background:var(--paper-2);padding:1px 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">つぶやきGLSL / 係数実験台</div>
+  <h1>この<em>1行</em>のシェーダ、定数を動かすと何が起きるか</h1>
+  <p class="sub">レイマーチで折り畳んだフラクタルを発光で描く原典。直書きの 3, 6, 5, 6, 1e6… を全部つまみにした。黒い縦線が原典の値。</p>
+</header>
+
+<div class="grid">
+  <section class="scope">
+    <div class="screen">
+      <canvas id="cv" aria-label="係数を変えたGLSLフラクタルの描画"></canvas>
+      <div class="corner" id="corner"></div>
+      <div class="fallback" id="fallback">お使いのブラウザは WebGL2 に対応していないようです。<br>最新の Chrome / Safari / Firefox でお試しください。</div>
+    </div>
+
+    <div class="bar">
+      <button id="play">一時停止</button>
+      <button class="ghost" id="undo">1つ戻す</button>
+      <button class="ghost" id="reset">原典に戻す</button>
+      <button class="ghost" id="nudge">全体を少しゆらす</button>
+      <button class="ghost" id="wild">大きく振る</button>
+    </div>
+
+    <div class="opts">
+      <label><input type="checkbox" id="freeze">t を止める</label>
+      <span class="sep">|</span>
+      <span class="qlabel">画質</span>
+      <button class="ghost gbtn" data-q="0.5">低</button>
+      <button class="ghost gbtn" data-q="0.75">中</button>
+      <button class="ghost gbtn" data-q="1">高</button>
+    </div>
+  </section>
+
+  <section id="console"></section>
+</div>
+
+<div class="codebox">
+  <div class="codehead">
+    <h2>今の数字で書き直したコード（twigl の geekest にそのまま貼れます）</h2>
+    <button class="gbtn" id="copy">コピー</button>
+  </div>
+  <textarea id="code" readonly spellcheck="false"></textarea>
+</div>
+
+<footer>
+  <ul>
+    <li>一番よく化けるのは <code>FS</code>（折り返しの拡大率＝原典の <code>abs(p+p)</code> の 2）と <code>FOLD</code>（折り返しのずらし＝ −1）、それに <code>J</code>（折り回数）。まず「少しゆらす」で癖を掴むのが探しやすい。</li>
+    <li><code>SHARP</code> を下げると線が太く霧のように、上げると髪の毛のように細くなる。<code>GLOW</code> は明るさの割り算なので大きいほど暗い。</li>
+    <li><code>SV</code> は原典で <code>smoothstep(-8,8,0)=0.5</code> と潰れていた回転軸Yの入力。動かすと軸が (X, 0〜AYM, Z) の間で振れる。</li>
+    <li>出力は twigl の <a href="https://twigl.app" target="_blank" rel="noopener">twigl.app</a>「geekest」モードにそのまま貼れる1行。<code>rotate2D / rotate3D / FC / r / t / o</code> は組み込み。</li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const gl = cv.getContext('webgl2', { antialias:false, preserveDrawingBuffer:false });
+  const fallback = document.getElementById('fallback');
+  if (!gl) { fallback.style.display = 'flex'; return; }
+
+  // ── シェーダ（原典と同じ構造。直書き定数を uniform に差し替え） ──
+  const VERT = `#version 300 es
+  void main(){
+    vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2));
+    gl_Position = vec4(p*2.0-1.0, 0.0, 1.0);
+  }`;
+
+  const FRAG = `#version 300 es
+  precision highp float;
+  uniform vec2 r; uniform float t;
+  uniform float uI,uJ,uSTEP,uCAM,uZS,uR2,uAO,uAX,uAYM,uSV,uAZ,uFS,uFOLD,uDS,uRAD,uSHARP,uGLOW;
+  out vec4 fragColor;
+
+  mat2 rotate2D(float a){ return mat2(cos(a),sin(a),-sin(a),cos(a)); }
+  mat3 rotate3D(float angle, vec3 axis){
+    vec3 a = normalize(axis);
+    float s = sin(angle), c = cos(angle), o = 1.0 - c;
+    return mat3(
+      a.x*a.x*o + c,      a.y*a.x*o + a.z*s,  a.z*a.x*o - a.y*s,
+      a.x*a.y*o - a.z*s,  a.y*a.y*o + c,      a.z*a.y*o + a.x*s,
+      a.x*a.z*o + a.y*s,  a.y*a.z*o - a.x*s,  a.z*a.z*o + c);
+  }
+
+  void main(){
+    vec2 FC = gl_FragCoord.xy;
+    vec4 o = vec4(0.0);
+    float e = 0.0, g = 0.0;
+    for(float i = 0.0; i < uI; i++){
+      vec3 p = vec3((FC - r*0.5)/r.y*g, g - uCAM + sin(t*uZS));
+      p.zy *= rotate2D(t*uR2);
+      for(float j = 0.0; j < uJ; j++){
+        p *= rotate3D(t + uAO, vec3(uAX, uAYM*smoothstep(-8.0,8.0,uSV), uAZ));
+        p = abs(p*uFS) - uFOLD;
+      }
+      g += e = (length(p.yzx)*uDS - uRAD)/uSTEP;
+      o += exp(-e*uSHARP)/uGLOW;
+    }
+    fragColor = vec4(o.rgb, 1.0);
+  }`;
+
+  function mk(type, src){
+    const sh = gl.createShader(type); gl.shaderSource(sh, src); gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+    return sh;
+  }
+  let prog;
+  try {
+    prog = gl.createProgram();
+    gl.attachShader(prog, mk(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, mk(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  } catch (err) {
+    fallback.textContent = 'シェーダのコンパイルに失敗しました: ' + err.message;
+    fallback.style.display = 'flex'; return;
+  }
+  gl.useProgram(prog);
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+
+  // ── つまみ定義（原典の直書き定数） ──────────────────
+  const SPEC = [
+    { g:'レイマーチ', expr:'i を <b>I</b> 回進め、1歩を <b>STEP</b> で刻む',
+      note:'光線を前に進める回数と、1歩の細かさ。',
+      ks:[ ['I',100,10,300,1,'マーチ回数。少ないと奥が欠ける'],
+           ['STEP',900,100,3000,10,'1歩の細かさ。大きいほど正確でシャープ'] ] },
+    { g:'カメラ', expr:'p = vec3(uv·g, g − <b>CAM</b> + sin(t·<b>ZS</b>)); p.zy ·= rot(t·<b>R2</b>)',
+      note:'引きの距離・前後の揺れ・全体の回転。',
+      ks:[ ['CAM',3,0,8,.1,'カメラを引く距離'],
+           ['ZS',.5,0,2,.05,'前後にゆれる速さ'],
+           ['R2',.5,-2,2,.05,'画面全体が回る速さと向き'] ] },
+    { g:'折り・回転', expr:'p ·= rot3D(t + <b>AO</b>, vec3(<b>AX</b>, <b>AYM</b>·smoothstep(-8,8,<b>SV</b>), <b>AZ</b>)) を <b>J</b> 回',
+      note:'折り込むたびに空間を回す軸と角度。表情の核。',
+      ks:[ ['J',6,0,12,1,'折り込み回数。多いほど複雑'],
+           ['AO',.5,-3.14,3.14,.02,'回転角の下駄'],
+           ['AX',5,-10,10,.1,'回転軸 X'],
+           ['AYM',2,0,6,.1,'回転軸 Y の強さ'],
+           ['SV',0,-8,8,.1,'軸Yの効き（smoothstepの入力）'],
+           ['AZ',4,-10,10,.1,'回転軸 Z'] ] },
+    { g:'フォールド', expr:'p = abs(p × <b>FS</b>) − <b>FOLD</b>',
+      note:'空間を折り返す本体。ここが一番よく化ける。',
+      ks:[ ['FS',2,0,4,.02,'折り返しの拡大率（原典の p+p の 2）'],
+           ['FOLD',1,0,3,.02,'折り返しのずらし幅'] ] },
+    { g:'距離', expr:'e = (length(p) × <b>DS</b> − <b>RAD</b>) / STEP',
+      note:'折った空間の中の「面」の位置。',
+      ks:[ ['DS',5,.5,15,.1,'距離のスケール'],
+           ['RAD',6,0,20,.1,'球の半径ぶんの引き算'] ] },
+    { g:'発光', expr:'o += exp(−e × <b>SHARP</b>) / <b>GLOW</b>',
+      note:'面に近いほど光る。線の細さと明るさ。',
+      ks:[ ['SHARP',1e6,5e4,5e6,5e4,'光の鋭さ（大きいほど細い）'],
+           ['GLOW',70,10,300,1,'明るさの割り算（大きいほど暗い）'] ] }
+  ];
+
+  const ORIG = {}; SPEC.forEach(s => s.ks.forEach(k => ORIG[k[0]] = k[1]));
+  let P = { ...ORIG };
+  const history = [];
+
+  const uni = { r: gl.getUniformLocation(prog,'r'), t: gl.getUniformLocation(prog,'t') };
+  for (const id in ORIG) uni[id] = gl.getUniformLocation(prog, 'u'+id);
+
+  // ── つまみ UI ───────────────────────────────────────
+  const cons = document.getElementById('console'), inputs = {}, nows = {};
+  SPEC.forEach(sec => {
+    const grp = document.createElement('div'); grp.className = 'group';
+    grp.innerHTML = '<div class="ghead"><span class="gname">' + sec.g +
+      '</span><button class="gbtn ghost" data-g="' + sec.g + '">ここだけ振る</button></div>' +
+      '<div class="gexpr">' + sec.expr + '</div><div class="gnote">' + sec.note + '</div>';
+    const box = document.createElement('div'); box.className = 'knobs';
+    sec.ks.forEach(([id, def, lo, hi, st, tip]) => {
+      const row = document.createElement('div'); row.className = 'knob'; row.title = tip;
+      row.innerHTML = '<span class="id">' + id + '</span>' +
+        '<span class="track"><input type="range" min="' + lo + '" max="' + hi + '" step="' + st +
+        '" value="' + def + '" aria-label="' + id + ' ' + tip + '">' +
+        '<span class="orig" style="left:' + ((def-lo)/(hi-lo)*100) + '%"></span></span>' +
+        '<span class="now">' + disp(def) + '</span>';
+      const inp = row.querySelector('input');
+      inp.oninput = () => { push(); P[id] = +inp.value; sync(id); code(); };
+      inputs[id] = inp; nows[id] = row.querySelector('.now');
+      box.appendChild(row);
+    });
+    grp.appendChild(box); cons.appendChild(grp);
+    grp.querySelector('[data-g]').onclick = () => { push(); sec.ks.forEach(k => jitter(k, .5)); apply(); };
+  });
+
+  function disp(v){ return Math.abs(v) >= 1e4 ? (+v).toExponential(1).replace('+','') : (Math.round(v*100)/100).toString(); }
+  function sync(id){ nows[id].textContent = disp(P[id]); nows[id].classList.toggle('moved', P[id] !== ORIG[id]); }
+  function apply(){ for (const id in P) { inputs[id].value = P[id]; sync(id); } code(); }
+  function push(){ history.push({ ...P }); if (history.length > 40) history.shift(); }
+  function jitter([id, def, lo, hi, st], amt) {
+    const span = (hi - lo) * amt * (Math.random() * .6 + .2) * (Math.random() < .5 ? -1 : 1);
+    P[id] = Math.min(hi, Math.max(lo, Math.round((P[id] + span) / st) * st));
+  }
+
+  document.getElementById('reset').onclick = () => { push(); P = { ...ORIG }; apply(); };
+  document.getElementById('undo').onclick  = () => { const h = history.pop(); if (h) { P = h; apply(); } };
+  document.getElementById('nudge').onclick = () => { push(); SPEC.forEach(s => s.ks.forEach(k => jitter(k, .06))); apply(); };
+  document.getElementById('wild').onclick  = () => { push(); SPEC.forEach(s => s.ks.forEach(k => jitter(k, .4))); apply(); };
+
+  const freeze = document.getElementById('freeze');
+  let running = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const playBtn = document.getElementById('play');
+  playBtn.textContent = running ? '一時停止' : '再生';
+  playBtn.onclick = () => { running = !running; playBtn.textContent = running ? '一時停止' : '再生'; };
+
+  // ── 画質 ────────────────────────────────────────────
+  let quality = 0.75;
+  const qBtns = [...document.querySelectorAll('[data-q]')];
+  qBtns.forEach(b => b.onclick = () => {
+    quality = +b.dataset.q; qBtns.forEach(x => x.classList.toggle('active', x === b)); resize();
+  });
+  qBtns.find(b => +b.dataset.q === quality).classList.add('active');
+
+  // ── 解像度 ──────────────────────────────────────────
+  let W = 1, H = 1;
+  function resize(){
+    const css = cv.clientWidth || 400;
+    let px = Math.round(css * Math.min(devicePixelRatio || 1, 2) * quality);
+    px = Math.max(120, Math.min(px, 760));
+    W = H = px; cv.width = px; cv.height = px; gl.viewport(0, 0, px, px);
+  }
+  addEventListener('resize', resize); resize();
+
+  // ── 描画 ────────────────────────────────────────────
+  const corner = document.getElementById('corner');
+  let t = 0, last = performance.now();
+  function frame(now){
+    const dt = Math.min((now - last) / 1000, 0.05); last = now;
+    if (running && !freeze.checked) t += dt;
+    gl.uniform2f(uni.r, W, H);
+    gl.uniform1f(uni.t, t);
+    for (const id in P) gl.uniform1f(uni[id], P[id]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    corner.textContent = W + '²  ·  I' + Math.round(P.I) + ' J' + Math.round(P.J);
+    requestAnimationFrame(frame);
+  }
+
+  // ── コード出力（twigl geekest 1行） ─────────────────
+  const ta = document.getElementById('code');
+  const f = v => { const n = Math.round(v*1000)/1000; return Number.isInteger(n) ? n + '.' : String(n); };
+  const ci = v => String(Math.round(v));           // ループ回数は整数で
+  function code(){
+    ta.value =
+      'for(float i,e,g;i++<' + ci(P.I) + ';){vec3 p=vec3((FC.xy-r*.5)/r.y*g,g-' + f(P.CAM) +
+      '+sin(t*' + f(P.ZS) + '));p.zy*=rotate2D(t*' + f(P.R2) + ');for(int j;j++<' + ci(P.J) +
+      ';)p*=rotate3D(t+' + f(P.AO) + ',vec3(' + f(P.AX) + ',' + f(P.AYM) + '*smoothstep(-8.,8.,' + f(P.SV) +
+      '),' + f(P.AZ) + ')),p=abs(p*' + f(P.FS) + ')-' + f(P.FOLD) + ';g+=e=(length(p.yzx)*' + f(P.DS) +
+      '-' + f(P.RAD) + ')/' + f(P.STEP) + ';o+=exp(-e*' + f(P.SHARP) + ')/' + f(P.GLOW) + ';}';
+  }
+  document.getElementById('copy').onclick = async e => {
+    try { await navigator.clipboard.writeText(ta.value); e.target.textContent = 'コピーした'; }
+    catch { ta.select(); e.target.textContent = '選択した'; }
+    setTimeout(() => e.target.textContent = 'コピー', 1400);
+  };
+
+  code(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
